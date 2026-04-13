@@ -2,8 +2,11 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class RuntimeWindowControls : MonoBehaviour, IDragHandler
+public class RuntimeWindowControls : MonoBehaviour, IDragHandler, IPointerDownHandler
 {
+    private const int FocusedSortingOrderBase = 1200;
+    private static int nextFocusedSortingOrder = FocusedSortingOrderBase;
+
     [SerializeField] private RectTransform targetWindow;
     [SerializeField] private RectTransform contentRoot;
 
@@ -16,6 +19,13 @@ public class RuntimeWindowControls : MonoBehaviour, IDragHandler
         targetWindow = window;
         contentRoot = content;
         normalSize = window.sizeDelta;
+        EnsureWindowClipsChildren();
+        AttachFocusHandler(targetWindow.gameObject);
+    }
+
+    public void OnPointerDown(PointerEventData eventData)
+    {
+        BringToFront();
     }
 
     public void OnDrag(PointerEventData eventData)
@@ -25,7 +35,27 @@ public class RuntimeWindowControls : MonoBehaviour, IDragHandler
             return;
         }
 
+        BringToFront();
         targetWindow.anchoredPosition += eventData.delta;
+    }
+
+    public void BringToFront()
+    {
+        if (targetWindow == null)
+        {
+            return;
+        }
+
+        targetWindow.SetAsLastSibling();
+
+        Canvas canvas = targetWindow.GetComponentInParent<Canvas>();
+        if (canvas == null)
+        {
+            return;
+        }
+
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = nextFocusedSortingOrder++;
     }
 
     public void ToggleMinimize()
@@ -77,6 +107,16 @@ public class RuntimeWindowControls : MonoBehaviour, IDragHandler
         }
     }
 
+    private void EnsureWindowClipsChildren()
+    {
+        if (targetWindow == null || targetWindow.GetComponent<RectMask2D>() != null)
+        {
+            return;
+        }
+
+        targetWindow.gameObject.AddComponent<RectMask2D>();
+    }
+
     public Image CreateButton(string label, Vector2 anchoredPosition, UnityEngine.Events.UnityAction action)
     {
         GameObject buttonObject = new GameObject(label);
@@ -94,6 +134,7 @@ public class RuntimeWindowControls : MonoBehaviour, IDragHandler
 
         Button button = buttonObject.AddComponent<Button>();
         button.onClick.AddListener(action);
+        AttachFocusHandler(buttonObject);
 
         Text text = CreateLabel(buttonObject.transform, label, 18);
         text.alignment = TextAnchor.MiddleCenter;
@@ -118,6 +159,18 @@ public class RuntimeWindowControls : MonoBehaviour, IDragHandler
 
         WindowResizeHandle resize = handle.AddComponent<WindowResizeHandle>();
         resize.Initialize(targetWindow, minSize);
+        AttachFocusHandler(handle);
+    }
+
+    private void AttachFocusHandler(GameObject target)
+    {
+        WindowFocusForwarder focusForwarder = target.GetComponent<WindowFocusForwarder>();
+        if (focusForwarder == null)
+        {
+            focusForwarder = target.AddComponent<WindowFocusForwarder>();
+        }
+
+        focusForwarder.Initialize(this);
     }
 
     private Text CreateLabel(Transform parent, string value, int size)
@@ -137,5 +190,23 @@ public class RuntimeWindowControls : MonoBehaviour, IDragHandler
         text.color = Color.white;
         text.text = value;
         return text;
+    }
+}
+
+public class WindowFocusForwarder : MonoBehaviour, IPointerDownHandler
+{
+    private RuntimeWindowControls controls;
+
+    public void Initialize(RuntimeWindowControls windowControls)
+    {
+        controls = windowControls;
+    }
+
+    public void OnPointerDown(PointerEventData eventData)
+    {
+        if (controls != null)
+        {
+            controls.BringToFront();
+        }
     }
 }
