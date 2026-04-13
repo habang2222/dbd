@@ -1,8 +1,8 @@
 
-=== Fri Apr 10 13:17:25 2026
+=== Sat Apr 11 17:29:55 2026
 
 Packages were changed.
-Update Mode: mergeDefaultDependencies
+Update Mode: resetToDefaultDependencies
 
 The following packages were added:
   com.unity.modules.adaptiveperformance@1.0.0
@@ -40,13 +40,23 @@ The following packages were added:
   com.unity.modules.xr@1.0.0
   com.unity.modules.accessibility@1.0.0
   com.unity.multiplayer.center@1.0.1
-The following packages were updated:
-  com.unity.ai.navigation from version 2.0.0 to 2.0.11
-  com.unity.collab-proxy from version 2.2.0 to 2.11.4
-  com.unity.ide.rider from version 3.0.27 to 3.0.39
-  com.unity.ide.visualstudio from version 2.0.22 to 2.0.26
-  com.unity.inputsystem from version 1.12.0 to 1.19.0
-  com.unity.render-pipelines.universal from version 17.0.1 to 17.3.0
-  com.unity.test-framework from version 1.4.2 to 1.6.0
-  com.unity.timeline from version 1.8.6 to 1.8.11
-  com.unity.visualscripting from version 1.9.1 to 1.9.10
+
+=== Sat Apr 11 17:30:55 2026
+
+Packages were changed.
+Update Mode: updateDependencies
+
+The following packages were added:
+  com.unity.2d.sprite@1.0.0
+  com.unity.2d.tilemap@1.0.0
+  com.unity.ads@4.16.4
+  com.unity.analytics@3.8.2
+  com.unity.collab-proxy@2.11.4
+  com.unity.ide.rider@3.0.39
+  com.unity.ide.visualstudio@2.0.26
+  com.unity.purchasing@4.14.2
+  com.unity.test-framework@1.6.0
+  com.unity.timeline@1.8.11
+  com.unity.ugui@2.0.0
+  com.unity.xr.legacyinputhelpers@2.1.13
+  com.unity.ai.navigation@2.0.11
