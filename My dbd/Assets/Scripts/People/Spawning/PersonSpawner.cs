@@ -70,6 +70,8 @@ public class PersonSpawner : MonoBehaviour
         // 처음에는 멈춰 있고, 우클릭 목적지를 받으면 움직입니다.
         PersonMover mover = personObject.AddComponent<PersonMover>();
         mover.InitializeIdle(position, 1.5f + (index * 0.25f));
+        personObject.AddComponent<UnitCombatController>();
+        personObject.AddComponent<UnitDeathShrink>();
 
         personManager.Register(person);
     }
@@ -87,8 +89,8 @@ public class PersonSpawner : MonoBehaviour
     private PersonInventory CreateInventory(int index)
     {
         PersonInventory inventory = new PersonInventory();
-        inventory.AddItem("wood1", index + 1);
-        inventory.AddItem("stone1", 1);
+        inventory.AddItem("wood_1", index + 1);
+        inventory.AddItem("stone_1", 1);
         return inventory;
     }
 }

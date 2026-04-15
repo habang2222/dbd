@@ -1,3 +1,4 @@
+using Unity.AI.Navigation;
 using UnityEngine;
 
 // 사람 한 명의 "기본 정보"를 들고 있는 컴포넌트입니다.
@@ -29,8 +30,15 @@ public class PersonComponent : MonoBehaviour
     // 나중에 팀/진영 기능을 넣기 위한 자리입니다.
     [SerializeField] private string teamId;
 
+    // 이 유닛을 조종할 수 있는 플레이어입니다. Netcode를 붙이면 실제 clientId로 바꿉니다.
+    [SerializeField] private string ownerClientId;
+
     // 지금 이 사람이 선택되었는지 저장합니다.
     [SerializeField] private bool isSelected;
+
+    [Header("Action Controls")]
+    [SerializeField] private UnitActionMode actionMode = UnitActionMode.Move;
+    [SerializeField] private bool runEnabled;
 
     // 아래 public 속성들은 다른 스크립트가 값을 읽을 수 있게 해 줍니다.
     // set이 없으므로 외부에서 함부로 바꾸지는 못합니다.
@@ -41,7 +49,24 @@ public class PersonComponent : MonoBehaviour
     public string CurrentState => currentState;
     public string CurrentAction => currentAction;
     public string TeamId => teamId;
+    public string OwnerClientId => ownerClientId;
     public bool IsSelected => isSelected;
+    public UnitActionMode ActionMode => actionMode;
+    public bool RunEnabled => runEnabled;
+
+    private void Start()
+    {
+        EnsureRuntimeSetup();
+    }
+
+    private void OnDestroy()
+    {
+        PersonManager manager = FindFirstObjectByType<PersonManager>();
+        if (manager != null)
+        {
+            manager.Unregister(this);
+        }
+    }
 
     // Collider가 붙은 오브젝트를 마우스로 클릭하면 Unity가 자동으로 호출합니다.
     private void OnMouseDown()
@@ -60,8 +85,11 @@ public class PersonComponent : MonoBehaviour
         inventory = initialInventory ?? new PersonInventory();
         currentState = "Idle";
         currentAction = "None";
-        teamId = string.Empty;
+        teamId = GameAuthority.LocalTeamId;
+        ownerClientId = GameAuthority.LocalClientId;
         isSelected = false;
+        actionMode = UnitActionMode.Move;
+        runEnabled = false;
 
         // Unity Hierarchy 창에서도 사람 이름이 보이게 오브젝트 이름을 맞춥니다.
         gameObject.name = personName;
@@ -91,9 +119,25 @@ public class PersonComponent : MonoBehaviour
         }
     }
 
+    public void SetActionMode(UnitActionMode mode)
+    {
+        actionMode = mode;
+    }
+
+    public void SetRunEnabled(bool enabled)
+    {
+        runEnabled = enabled;
+    }
+
     // 이 사람을 선택합니다.
     public void Select()
     {
+        if (!GameAuthority.IsOwnedByLocalClient(this))
+        {
+            Debug.LogWarning($"Cannot select {personName}: this unit is owned by {ownerClientId}.");
+            return;
+        }
+
         // 한 번에 한 명만 선택되게, 먼저 모든 사람의 선택을 해제합니다.
         foreach (PersonComponent person in FindObjectsByType<PersonComponent>(FindObjectsSortMode.None))
         {
@@ -108,6 +152,11 @@ public class PersonComponent : MonoBehaviour
             UnitListPanel.Instance.RefreshList();
         }
 
+        if (ActionWindow.Instance != null)
+        {
+            ActionWindow.Instance.RefreshForSelectedPerson();
+        }
+
         Debug.Log($"Selected {personName}: health={stats.health}, strength={stats.strength}, stamina={stats.stamina}");
     }
 
@@ -115,5 +164,100 @@ public class PersonComponent : MonoBehaviour
     public void SetTeam(string newTeamId)
     {
         teamId = newTeamId;
+    }
+
+    public void SetOwnerClient(string newOwnerClientId)
+    {
+        ownerClientId = newOwnerClientId;
+    }
+
+    private void EnsureRuntimeSetup()
+    {
+        GameAuthority.EnsureLocalOwnership(this);
+        EnsureManagerRegistration();
+        EnsureCollision();
+
+        if (GetComponent<PersonMover>() == null)
+        {
+            PersonMover mover = gameObject.AddComponent<PersonMover>();
+            mover.InitializeIdle(transform.position, 1.5f);
+        }
+
+        if (GetComponent<UnitCombatController>() == null)
+        {
+            gameObject.AddComponent<UnitCombatController>();
+        }
+
+        if (GetComponent<UnitDeathShrink>() == null)
+        {
+            gameObject.AddComponent<UnitDeathShrink>();
+        }
+
+        if (GetComponent<MovementStateValidator>() == null)
+        {
+            gameObject.AddComponent<MovementStateValidator>();
+        }
+
+        if (GetComponent<StatsIntegrityValidator>() == null)
+        {
+            gameObject.AddComponent<StatsIntegrityValidator>();
+        }
+
+        if (GetComponent<InventoryIntegrityValidator>() == null)
+        {
+            gameObject.AddComponent<InventoryIntegrityValidator>();
+        }
+
+        if (GetComponent<InventoryMutationTracker>() == null)
+        {
+            gameObject.AddComponent<InventoryMutationTracker>();
+        }
+
+        if (GetComponent<AuthorizedStatChangeTracker>() == null)
+        {
+            gameObject.AddComponent<AuthorizedStatChangeTracker>();
+        }
+
+        if (UnitListPanel.Instance != null)
+        {
+            UnitListPanel.Instance.RefreshList();
+        }
+    }
+
+    private void EnsureManagerRegistration()
+    {
+        PersonManager manager = FindFirstObjectByType<PersonManager>();
+        if (manager == null)
+        {
+            GameObject managerObject = new GameObject("Person Manager");
+            manager = managerObject.AddComponent<PersonManager>();
+        }
+
+        manager.Register(this);
+    }
+
+    private void EnsureCollision()
+    {
+        Collider collider = GetComponent<Collider>();
+        if (collider == null)
+        {
+            collider = gameObject.AddComponent<BoxCollider>();
+        }
+
+        collider.isTrigger = false;
+
+        NavMeshModifier modifier = GetComponent<NavMeshModifier>();
+        if (modifier == null)
+        {
+            modifier = gameObject.AddComponent<NavMeshModifier>();
+        }
+
+        modifier.ignoreFromBuild = true;
+
+        Rigidbody body = GetComponent<Rigidbody>();
+        if (body != null)
+        {
+            Destroy(body);
+        }
     }
 }

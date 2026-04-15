@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 // 카메라를 키보드와 마우스 휠로 움직이는 간단한 컨트롤러입니다.
 // WASD: 상하좌우 이동, 마우스 휠: 확대/축소 느낌의 앞뒤 이동
@@ -53,7 +54,7 @@ public class CameraPanZoomController : MonoBehaviour
 
         // 마우스 휠 입력입니다. 위로 굴리면 양수, 아래로 굴리면 음수입니다.
         float scroll = Input.mouseScrollDelta.y;
-        if (Mathf.Abs(scroll) > 0.01f)
+        if (Mathf.Abs(scroll) > 0.01f && !IsPointerOverUi())
         {
             Vector3 currentPosition = transform.position;
             Vector3 zoomDelta = transform.forward * scroll * zoomSpeed;
@@ -82,11 +83,21 @@ public class CameraPanZoomController : MonoBehaviour
         }
     }
 
+    private static bool IsPointerOverUi()
+    {
+        return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+    }
+
     public void FocusOn(Vector3 targetPosition)
     {
-        Vector3 position = transform.position;
-        position.x = targetPosition.x;
-        position.z = targetPosition.z - 6f;
-        transform.position = position;
+        Plane groundPlane = new Plane(Vector3.up, targetPosition);
+        Ray centerRay = new Ray(transform.position, transform.forward);
+        if (!groundPlane.Raycast(centerRay, out float distance))
+        {
+            return;
+        }
+
+        Vector3 currentCenter = centerRay.GetPoint(distance);
+        transform.position += targetPosition - currentCenter;
     }
 }

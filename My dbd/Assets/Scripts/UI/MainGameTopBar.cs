@@ -5,6 +5,8 @@ using UnityEngine.UI;
 
 public class MainGameTopBar : MonoBehaviour
 {
+    public static MainGameTopBar Instance { get; private set; }
+
     private readonly List<Button> menuButtons = new();
     private readonly string[] tabLabels =
     {
@@ -12,7 +14,7 @@ public class MainGameTopBar : MonoBehaviour
         "\uC18C\uC720\uD55C \uBB3C\uAC74",
         "\uCEE4\uBBA4\uB2C8\uD2F0",
         "\uCCAD\uC0AC\uC9C4",
-        "\uBBF8\uC815",
+        "\uC720\uB2DB \uBAA9\uB85D",
         "\uBBF8\uC815",
         "\uCC3D",
         "\uC124\uC815"
@@ -35,9 +37,18 @@ public class MainGameTopBar : MonoBehaviour
 
     private void Awake()
     {
+        Instance = this;
         font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         CreateUi();
         SelectTab(0);
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this)
+        {
+            Instance = null;
+        }
     }
 
     private void CreateUi()
@@ -123,6 +134,44 @@ public class MainGameTopBar : MonoBehaviour
             image.color = i == selectedIndex
                 ? new Color(0.20f, 0.20f, 0.18f, 0.98f)
                 : new Color(0.09f, 0.09f, 0.09f, 0.95f);
+        }
+
+        if (index == 1 && OwnedItemsWindow.Instance != null)
+        {
+            OwnedItemsWindow.Instance.Toggle();
+        }
+
+        if (index == 3 && Dbd.Crafting.BlueprintWindowController.Instance != null)
+        {
+            Dbd.Crafting.BlueprintWindowController.Instance.Toggle();
+        }
+        else if (index == 3)
+        {
+            GameObject blueprintWindow = new GameObject("Blueprint Window");
+            blueprintWindow.AddComponent<Dbd.Crafting.BlueprintWindowController>();
+            Dbd.Crafting.BlueprintWindowController.Instance.Show();
+        }
+
+        if (index == 4 && UnitListPanel.Instance != null)
+        {
+            UnitListPanel.Instance.Toggle();
+        }
+        else if (index == 4)
+        {
+            GameObject unitListPanel = new GameObject("Unit List Panel");
+            unitListPanel.AddComponent<UnitListPanel>();
+            UnitListPanel.Instance.Show();
+        }
+
+        if (index == 6 && WindowMenuPanel.Instance != null)
+        {
+            WindowMenuPanel.Instance.Toggle();
+        }
+        else if (index == 6)
+        {
+            GameObject windowMenuPanel = new GameObject("Window Menu Panel");
+            windowMenuPanel.AddComponent<WindowMenuPanel>();
+            WindowMenuPanel.Instance.Show();
         }
     }
 

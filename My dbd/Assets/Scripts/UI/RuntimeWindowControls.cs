@@ -2,15 +2,13 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class RuntimeWindowControls : MonoBehaviour, IDragHandler, IPointerDownHandler
+public class RuntimeWindowControls : MonoBehaviour, IBeginDragHandler, IDragHandler
 {
-    private const int FocusedSortingOrderBase = 1200;
-    private static int nextFocusedSortingOrder = FocusedSortingOrderBase;
-
     [SerializeField] private RectTransform targetWindow;
     [SerializeField] private RectTransform contentRoot;
 
     private Vector2 normalSize;
+    private Vector2 dragOffset;
     private bool isMinimized;
     private bool isMaximized;
 
@@ -19,13 +17,25 @@ public class RuntimeWindowControls : MonoBehaviour, IDragHandler, IPointerDownHa
         targetWindow = window;
         contentRoot = content;
         normalSize = window.sizeDelta;
-        EnsureWindowClipsChildren();
-        AttachFocusHandler(targetWindow.gameObject);
     }
 
-    public void OnPointerDown(PointerEventData eventData)
+    public void OnBeginDrag(PointerEventData eventData)
     {
-        BringToFront();
+        if (targetWindow == null || isMaximized)
+        {
+            return;
+        }
+
+        RectTransform parent = targetWindow.parent as RectTransform;
+        if (parent == null)
+        {
+            return;
+        }
+
+        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, eventData.position, eventData.pressEventCamera, out Vector2 pointerPosition))
+        {
+            dragOffset = targetWindow.anchoredPosition - pointerPosition;
+        }
     }
 
     public void OnDrag(PointerEventData eventData)
@@ -35,27 +45,16 @@ public class RuntimeWindowControls : MonoBehaviour, IDragHandler, IPointerDownHa
             return;
         }
 
-        BringToFront();
-        targetWindow.anchoredPosition += eventData.delta;
-    }
-
-    public void BringToFront()
-    {
-        if (targetWindow == null)
+        RectTransform parent = targetWindow.parent as RectTransform;
+        if (parent == null)
         {
             return;
         }
 
-        targetWindow.SetAsLastSibling();
-
-        Canvas canvas = targetWindow.GetComponentInParent<Canvas>();
-        if (canvas == null)
+        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, eventData.position, eventData.pressEventCamera, out Vector2 pointerPosition))
         {
-            return;
+            targetWindow.anchoredPosition = pointerPosition + dragOffset;
         }
-
-        canvas.overrideSorting = true;
-        canvas.sortingOrder = nextFocusedSortingOrder++;
     }
 
     public void ToggleMinimize()
@@ -107,16 +106,6 @@ public class RuntimeWindowControls : MonoBehaviour, IDragHandler, IPointerDownHa
         }
     }
 
-    private void EnsureWindowClipsChildren()
-    {
-        if (targetWindow == null || targetWindow.GetComponent<RectMask2D>() != null)
-        {
-            return;
-        }
-
-        targetWindow.gameObject.AddComponent<RectMask2D>();
-    }
-
     public Image CreateButton(string label, Vector2 anchoredPosition, UnityEngine.Events.UnityAction action)
     {
         GameObject buttonObject = new GameObject(label);
@@ -134,7 +123,6 @@ public class RuntimeWindowControls : MonoBehaviour, IDragHandler, IPointerDownHa
 
         Button button = buttonObject.AddComponent<Button>();
         button.onClick.AddListener(action);
-        AttachFocusHandler(buttonObject);
 
         Text text = CreateLabel(buttonObject.transform, label, 18);
         text.alignment = TextAnchor.MiddleCenter;
@@ -159,18 +147,6 @@ public class RuntimeWindowControls : MonoBehaviour, IDragHandler, IPointerDownHa
 
         WindowResizeHandle resize = handle.AddComponent<WindowResizeHandle>();
         resize.Initialize(targetWindow, minSize);
-        AttachFocusHandler(handle);
-    }
-
-    private void AttachFocusHandler(GameObject target)
-    {
-        WindowFocusForwarder focusForwarder = target.GetComponent<WindowFocusForwarder>();
-        if (focusForwarder == null)
-        {
-            focusForwarder = target.AddComponent<WindowFocusForwarder>();
-        }
-
-        focusForwarder.Initialize(this);
     }
 
     private Text CreateLabel(Transform parent, string value, int size)
@@ -190,23 +166,5 @@ public class RuntimeWindowControls : MonoBehaviour, IDragHandler, IPointerDownHa
         text.color = Color.white;
         text.text = value;
         return text;
-    }
-}
-
-public class WindowFocusForwarder : MonoBehaviour, IPointerDownHandler
-{
-    private RuntimeWindowControls controls;
-
-    public void Initialize(RuntimeWindowControls windowControls)
-    {
-        controls = windowControls;
-    }
-
-    public void OnPointerDown(PointerEventData eventData)
-    {
-        if (controls != null)
-        {
-            controls.BringToFront();
-        }
     }
 }

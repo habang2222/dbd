@@ -14,6 +14,7 @@ public class EnemyComponent : MonoBehaviour
     public PersonStats Stats => stats;
     public float Health => stats.health;
     public float Strength => stats.strength;
+    public float Stamina => stats.stamina;
 
     private void OnMouseDown()
     {
@@ -23,11 +24,11 @@ public class EnemyComponent : MonoBehaviour
         }
     }
 
-    public void Initialize(string id, string displayName, float health, float strength)
+    public void Initialize(string id, string displayName, float health, float strength, float stamina)
     {
         enemyId = id;
         enemyName = displayName;
-        stats = new PersonStats(health, strength, 0f);
+        stats = new PersonStats(health, strength, stamina);
         gameObject.name = enemyName;
     }
 }

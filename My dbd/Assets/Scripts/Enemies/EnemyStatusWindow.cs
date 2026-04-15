@@ -50,7 +50,8 @@ public class EnemyStatusWindow : MonoBehaviour
         bodyText.text =
             "\uC801 \uC0C1\uD0DC\n" +
             $"\uCCB4\uB825: {enemy.Health:0}\n" +
-            $"\uD798: {enemy.Strength:0}";
+            $"\uD798: {enemy.Strength:0}\n" +
+            $"\uC2A4\uD14C\uBBF8\uB098: {enemy.Stamina:0}";
     }
 
     private void CreateUi()
@@ -88,6 +89,7 @@ public class EnemyStatusWindow : MonoBehaviour
         contentRoot.anchorMax = Vector2.one;
         contentRoot.offsetMin = new Vector2(18f, 18f);
         contentRoot.offsetMax = new Vector2(-18f, -62f);
+        contentObject.AddComponent<RectMask2D>();
 
         bodyText = CreateText(contentRoot, string.Empty, 20, TextAnchor.UpperLeft);
         SetRect(bodyText.rectTransform, 0f, 0f, 0f, 0f, 0f, 0f, 1f, 1f);

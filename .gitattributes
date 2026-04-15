@@ -1,0 +1,20 @@
+* text=auto
+*.cs text eol=crlf
+*.shader text eol=lf
+*.cginc text eol=lf
+*.meta text eol=lf
+*.unity text eol=lf
+*.prefab text eol=lf
+*.asset text eol=lf
+*.mat text eol=lf
+*.controller text eol=lf
+*.anim text eol=lf
+*.json text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.psd binary
+*.fbx binary
+*.dll binary
+*.pdb binary

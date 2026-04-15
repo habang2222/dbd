@@ -5,6 +5,9 @@ using UnityEngine.AI;
 // Unity의 NavMeshAgent를 사용하므로, 바닥에는 NavMesh가 만들어져 있어야 합니다.
 public class PersonMover : MonoBehaviour
 {
+    private const float BaseMoveSpeed = 1.5f;
+    private const float RunMultiplier = 2f;
+
     // 예전 왕복 이동용 시작점입니다. 지금 클릭 이동에서는 주로 InitializeIdle로 같은 위치를 넣습니다.
     [SerializeField] private Vector3 pointA;
 
@@ -26,8 +29,59 @@ public class PersonMover : MonoBehaviour
     // true이면 pointA와 pointB 사이를 자동 왕복합니다. 클릭 이동에서는 false로 둡니다.
     private bool patrolRouteEnabled;
     private bool hasDestinationCommand;
+    private bool staminaRecoveryBoosted;
 
-    public bool IsMoving => agent != null && (agent.pathPending || agent.remainingDistance > stoppingDistance);
+    public bool IsMoving => agent != null && !agent.isStopped && (agent.pathPending || agent.remainingDistance > stoppingDistance);
+    public bool IsRunning => IsRunEnabledForThisPerson() && IsMoving && HasStaminaToRun();
+
+    public void StopForCombat()
+    {
+        StopMoving(false);
+    }
+
+    public void StopByCommand()
+    {
+        StopMoving(true);
+    }
+
+    public void RunCurrentMove()
+    {
+        SetRunningForCurrentMove(true);
+    }
+
+    public void SetRunningForCurrentMove(bool run)
+    {
+        EnsureAgent();
+        if (!IsMoving)
+        {
+            return;
+        }
+
+        staminaRecoveryBoosted = false;
+        ApplyCurrentSpeed();
+
+        PersonComponent person = GetComponent<PersonComponent>();
+        if (person != null)
+        {
+            person.SetUnitStatus(run ? "\uB2EC\uB9AC\uB294 \uC911" : "\uC774\uB3D9 \uC911", person.CurrentAction);
+        }
+    }
+
+    private void StopMoving(bool boostRecovery)
+    {
+        EnsureAgent();
+        hasDestinationCommand = false;
+        patrolRouteEnabled = false;
+        staminaRecoveryBoosted = boostRecovery;
+        moveSpeed = BaseMoveSpeed;
+
+        if (agent.isOnNavMesh)
+        {
+            agent.speed = moveSpeed;
+            agent.isStopped = true;
+            agent.ResetPath();
+        }
+    }
 
     // 자동 왕복 이동을 시작하고 싶을 때 쓰는 초기화 함수입니다.
     // 지금 게임 흐름에서는 주로 클릭 이동을 쓰지만, 테스트용으로 남겨 두었습니다.
@@ -78,14 +132,30 @@ public class PersonMover : MonoBehaviour
     // Update는 매 프레임 호출됩니다.
     private void Update()
     {
+        PersonComponent person = GetComponent<PersonComponent>();
+        if (AntiCheatService.IsFrozen(person))
+        {
+            StopMoving(false);
+            return;
+        }
+
+        if (UnitCombatController.IsPersonInCombat(person))
+        {
+            StopForCombat();
+            person.SetUnitStatus("\uC804\uD22C \uC911", "\uD6C4\uD1F4\uD558\uAE30 \uC804\uAE4C\uC9C0 \uC774\uB3D9 \uBD88\uAC00");
+            return;
+        }
+
+        UpdateStamina(person);
+        ApplyCurrentSpeed();
+
         if (!patrolRouteEnabled && hasDestinationCommand && agent != null && !agent.pathPending && agent.remainingDistance <= stoppingDistance)
         {
             hasDestinationCommand = false;
 
-            PersonComponent person = GetComponent<PersonComponent>();
             if (person != null)
             {
-                person.SetUnitStatus("\uB300\uAE30", "\uBA48\uCDA4");
+                person.SetUnitStatus("Idle", "None");
             }
         }
 
@@ -104,16 +174,97 @@ public class PersonMover : MonoBehaviour
     // PersonClickMoveController가 우클릭 위치를 넘길 때 이 함수를 사용합니다.
     public void MoveToDestination(Vector3 destination)
     {
+        MoveToDestination(destination, false);
+    }
+
+    public void MoveToDestination(Vector3 destination, bool run)
+    {
+        PersonComponent person = GetComponent<PersonComponent>();
+        if (AntiCheatService.IsFrozen(person))
+        {
+            StopMoving(false);
+            return;
+        }
+
+        if (!AntiCheatService.CanAcceptMoveCommand(person, destination, out string reason))
+        {
+            Debug.LogWarning($"Direct move rejected for {(person != null ? person.PersonName : "unknown")}: {reason}");
+            StopMoving(false);
+            return;
+        }
+
+        if (UnitCombatController.IsPersonInCombat(person))
+        {
+            StopForCombat();
+            person.SetUnitStatus("\uC804\uD22C \uC911", "\uD6C4\uD1F4\uD558\uAE30 \uC804\uAE4C\uC9C0 \uC774\uB3D9 \uBD88\uAC00");
+            return;
+        }
+
         patrolRouteEnabled = false;
         hasDestinationCommand = true;
+        staminaRecoveryBoosted = false;
         routeTarget = destination;
+        moveSpeed = BaseMoveSpeed;
         MoveTo(destination);
 
-        PersonComponent person = GetComponent<PersonComponent>();
         if (person != null)
         {
-            person.SetUnitStatus("\uC774\uB3D9 \uC911", "\uD2B9\uC815 \uC9C0\uC5ED \uC774\uB3D9");
+            person.SetUnitStatus(IsRunEnabledForThisPerson() ? "\uB2EC\uB9AC\uB294 \uC911" : "\uC774\uB3D9 \uC911", "\uD2B9\uC815 \uC9C0\uC5ED \uC774\uB3D9");
         }
+    }
+
+    private void UpdateStamina(PersonComponent person)
+    {
+        if (person == null)
+        {
+            return;
+        }
+
+        if (IsRunning)
+        {
+            person.Stats.stamina = Mathf.Max(0f, person.Stats.stamina - Time.deltaTime);
+            if (person.Stats.stamina <= 0f)
+            {
+                moveSpeed = BaseMoveSpeed;
+                if (agent != null)
+                {
+                    agent.speed = moveSpeed;
+                }
+            }
+
+            return;
+        }
+
+        if (staminaRecoveryBoosted && !IsMoving)
+        {
+            person.Stats.stamina = Mathf.Min(100f, person.Stats.stamina + Time.deltaTime);
+        }
+    }
+
+    private void ApplyCurrentSpeed()
+    {
+        if (agent == null)
+        {
+            return;
+        }
+
+        float targetSpeed = IsRunning ? moveSpeed * RunMultiplier : moveSpeed;
+        if (!Mathf.Approximately(agent.speed, targetSpeed))
+        {
+            agent.speed = targetSpeed;
+        }
+    }
+
+    private bool HasStaminaToRun()
+    {
+        PersonComponent person = GetComponent<PersonComponent>();
+        return person == null || person.Stats.stamina > 0f;
+    }
+
+    private bool IsRunEnabledForThisPerson()
+    {
+        PersonComponent person = GetComponent<PersonComponent>();
+        return person != null && person.RunEnabled;
     }
 
     // NavMeshAgent가 반드시 존재하도록 보장합니다.
@@ -146,6 +297,7 @@ public class PersonMover : MonoBehaviour
     {
         EnsureAgent();
         agent.speed = moveSpeed;
+        agent.isStopped = false;
 
         // 클릭 지점이 NavMesh에서 살짝 벗어나도 주변 3m 안의 갈 수 있는 위치를 찾아 봅니다.
         if (NavMesh.SamplePosition(destination, out NavMeshHit hit, 3f, NavMesh.AllAreas))

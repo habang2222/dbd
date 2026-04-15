@@ -6,12 +6,14 @@ public static class EnemyRuntimeBootstrap
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void CreateEnemiesIfMissing()
     {
-        if (Object.FindObjectsByType<EnemyComponent>(FindObjectsSortMode.None).Length > 0)
+        EnvironmentRuntimeBootstrap.EnsureEnvironment();
+
+        EnemyComponent[] existingEnemies = Object.FindObjectsByType<EnemyComponent>(FindObjectsSortMode.None);
+        if (existingEnemies.Length > 0)
         {
+            EnsureExistingEnemiesCanAct(existingEnemies);
             return;
         }
-
-        EnvironmentRuntimeBootstrap.EnsureEnvironment();
 
         for (int i = 0; i < 3; i++)
         {
@@ -30,7 +32,14 @@ public static class EnemyRuntimeBootstrap
             $"enemy_{index + 1}",
             $"Enemy_{index + 1}",
             70f + (index * 20f),
-            7f + (index * 3f));
+            7f + (index * 3f),
+            100f);
+
+        EnemyWanderer wanderer = enemyObject.AddComponent<EnemyWanderer>();
+        wanderer.Initialize(enemyObject.transform.position, 8f);
+
+        enemyObject.AddComponent<UnitCombatController>();
+        enemyObject.AddComponent<UnitDeathShrink>();
 
         Renderer renderer = enemyObject.GetComponent<Renderer>();
         if (renderer != null)
@@ -45,6 +54,59 @@ public static class EnemyRuntimeBootstrap
         }
 
         NavMeshModifier modifier = enemyObject.AddComponent<NavMeshModifier>();
+        modifier.ignoreFromBuild = true;
+    }
+
+    private static void EnsureExistingEnemiesCanAct(EnemyComponent[] enemies)
+    {
+        foreach (EnemyComponent enemy in enemies)
+        {
+            if (enemy == null)
+            {
+                continue;
+            }
+
+            EnsureEnemyCollision(enemy.gameObject);
+
+            if (enemy.Stats.stamina <= 0f)
+            {
+                enemy.Stats.stamina = 100f;
+            }
+
+            if (enemy.GetComponent<EnemyWanderer>() == null)
+            {
+                EnemyWanderer wanderer = enemy.gameObject.AddComponent<EnemyWanderer>();
+                wanderer.Initialize(enemy.transform.position, 8f);
+            }
+
+            if (enemy.GetComponent<UnitCombatController>() == null)
+            {
+                enemy.gameObject.AddComponent<UnitCombatController>();
+            }
+
+            if (enemy.GetComponent<UnitDeathShrink>() == null)
+            {
+                enemy.gameObject.AddComponent<UnitDeathShrink>();
+            }
+        }
+    }
+
+    private static void EnsureEnemyCollision(GameObject enemyObject)
+    {
+        Collider collider = enemyObject.GetComponent<Collider>();
+        if (collider == null)
+        {
+            collider = enemyObject.AddComponent<SphereCollider>();
+        }
+
+        collider.isTrigger = false;
+
+        NavMeshModifier modifier = enemyObject.GetComponent<NavMeshModifier>();
+        if (modifier == null)
+        {
+            modifier = enemyObject.AddComponent<NavMeshModifier>();
+        }
+
         modifier.ignoreFromBuild = true;
     }
 }

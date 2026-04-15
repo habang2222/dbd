@@ -91,8 +91,8 @@ public static class CraftingTestSceneSetup
 
             // 제작 테스트용 기본 재료입니다.
             PersonInventory inventory = new PersonInventory();
-            inventory.AddItem("wood1", i + 1);
-            inventory.AddItem("stone1", 1);
+            inventory.AddItem("wood_1", i + 1);
+            inventory.AddItem("stone_1", 1);
             person.Initialize(
                 $"person_{i + 1}",
                 personName,

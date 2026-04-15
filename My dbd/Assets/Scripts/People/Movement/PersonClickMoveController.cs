@@ -72,18 +72,11 @@ public class PersonClickMoveController : MonoBehaviour
             return;
         }
 
-        // 선택된 사람에게 이동 기능(PersonMover)이 없으면 붙여 줍니다.
-        // AddComponent는 Unity 오브젝트에 새 기능 부품을 끼우는 느낌입니다.
-        PersonMover mover = selectedPerson.GetComponent<PersonMover>();
-        if (mover == null)
+        bool run = ActionWindow.RunEnabled;
+        if (MovementCommandService.TryMove(selectedPerson, hit.point, run))
         {
-            mover = selectedPerson.gameObject.AddComponent<PersonMover>();
+            Debug.Log($"Moved {selectedPerson.PersonName} destination to {hit.point}.");
         }
-
-        // 실제 이동 명령은 PersonMover가 담당합니다.
-        mover.MoveToDestination(hit.point);
-        selectedPerson.SetUnitStatus("\uC774\uB3D9 \uC911", "\uD2B9\uC815 \uC9C0\uC5ED \uC774\uB3D9");
-        Debug.Log($"Moved {selectedPerson.PersonName} destination to {hit.point}.");
     }
 
     // 씬 안의 모든 PersonComponent를 돌면서 isSelected가 true인 사람을 찾습니다.

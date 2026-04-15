@@ -52,8 +52,8 @@ public static class PersonRuntimeBootstrap
 
             // 제작 테스트를 위해 기본 재료를 넣습니다.
             PersonInventory inventory = new PersonInventory();
-            inventory.AddItem("wood1", i + 1);
-            inventory.AddItem("stone1", 1);
+            inventory.AddItem("wood_1", i + 1);
+            inventory.AddItem("stone_1", 1);
 
             // 사람의 기본 데이터 컴포넌트를 붙입니다.
             PersonComponent person = personObject.AddComponent<PersonComponent>();
@@ -66,6 +66,8 @@ public static class PersonRuntimeBootstrap
             // 이동 기능을 붙입니다. 처음에는 멈춘 상태입니다.
             PersonMover mover = personObject.AddComponent<PersonMover>();
             mover.InitializeIdle(personObject.transform.position, 1.5f + (i * 0.25f));
+            personObject.AddComponent<UnitCombatController>();
+            personObject.AddComponent<UnitDeathShrink>();
 
             manager.Register(person);
         }
@@ -123,6 +125,17 @@ public static class PersonRuntimeBootstrap
         {
             PersonComponent person = people[i];
             EnsurePersonCollision(person.gameObject);
+            EnsurePersonColor(person.gameObject, i);
+            if (person.GetComponent<UnitCombatController>() == null)
+            {
+                person.gameObject.AddComponent<UnitCombatController>();
+            }
+
+            if (person.GetComponent<UnitDeathShrink>() == null)
+            {
+                person.gameObject.AddComponent<UnitDeathShrink>();
+            }
+
             if (person.GetComponent<PersonMover>() != null)
             {
                 continue;
@@ -157,5 +170,16 @@ public static class PersonRuntimeBootstrap
             // 현재 이동은 NavMeshAgent가 담당하므로 Rigidbody 물리는 제거합니다.
             Object.Destroy(body);
         }
+    }
+
+    private static void EnsurePersonColor(GameObject personObject, int index)
+    {
+        Renderer renderer = personObject.GetComponent<Renderer>();
+        if (renderer == null)
+        {
+            return;
+        }
+
+        renderer.material.color = Color.HSVToRGB(index / 4f, 0.75f, 0.95f);
     }
 }
