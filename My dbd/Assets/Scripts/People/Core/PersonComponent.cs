@@ -169,6 +169,11 @@ public class PersonComponent : MonoBehaviour
     public void SetOwnerClient(string newOwnerClientId)
     {
         ownerClientId = newOwnerClientId;
+        PersonOwnerNameplate nameplate = GetComponent<PersonOwnerNameplate>();
+        if (nameplate != null)
+        {
+            nameplate.Refresh();
+        }
     }
 
     private void EnsureRuntimeSetup()
@@ -191,6 +196,11 @@ public class PersonComponent : MonoBehaviour
         if (GetComponent<UnitDeathShrink>() == null)
         {
             gameObject.AddComponent<UnitDeathShrink>();
+        }
+
+        if (GetComponent<PersonOwnerNameplate>() == null)
+        {
+            gameObject.AddComponent<PersonOwnerNameplate>();
         }
 
         if (GetComponent<MovementStateValidator>() == null)

@@ -248,7 +248,8 @@ public class PersonMover : MonoBehaviour
             return;
         }
 
-        float targetSpeed = IsRunning ? moveSpeed * RunMultiplier : moveSpeed;
+        float terrainMultiplier = TerrainZoneInfo.GetSpeedMultiplier(transform.position);
+        float targetSpeed = (IsRunning ? moveSpeed * RunMultiplier : moveSpeed) * terrainMultiplier;
         if (!Mathf.Approximately(agent.speed, targetSpeed))
         {
             agent.speed = targetSpeed;

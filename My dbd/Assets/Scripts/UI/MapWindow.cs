@@ -236,6 +236,46 @@ public class MapWindow : MonoBehaviour
             {
                 CreateTerrainMarker(zone.transform.position, zone.transform.localScale, new Color(0.12f, 0.35f, 0.90f, 0.9f), "Map River");
             }
+            else if (zone.name == "Wide River")
+            {
+                CreateTerrainMarker(zone.transform.position, zone.transform.localScale, new Color(0.10f, 0.32f, 0.78f, 0.9f), "Map Wide River");
+            }
+            else if (zone.name == "Narrow River")
+            {
+                CreateTerrainMarker(zone.transform.position, zone.transform.localScale, new Color(0.16f, 0.45f, 0.95f, 0.9f), "Map Narrow River");
+            }
+            else if (zone.name == "Waterfall")
+            {
+                CreateTerrainMarker(zone.transform.position, zone.transform.localScale, new Color(0.70f, 0.88f, 1f, 0.9f), "Map Waterfall");
+            }
+            else if (zone.name == "Pond" || zone.name == "Lake")
+            {
+                CreateTerrainMarker(zone.transform.position, zone.transform.localScale, new Color(0.08f, 0.34f, 0.72f, 0.85f), "Map Fresh Water");
+            }
+            else if (zone.name == "Wetland" || zone.name == "Marsh")
+            {
+                CreateTerrainMarker(zone.transform.position, zone.transform.localScale, new Color(0.13f, 0.31f, 0.20f, 0.9f), "Map Wetland");
+            }
+            else if (zone.name == "Mountain" || zone.name == "High Mountain" || zone.name == "Great Mountain")
+            {
+                CreateTerrainMarker(zone.transform.position, zone.transform.localScale, new Color(0.33f, 0.36f, 0.34f, 0.9f), "Map Mountain");
+            }
+            else if (zone.name == "Hill" || zone.name == "Plateau")
+            {
+                CreateTerrainMarker(zone.transform.position, zone.transform.localScale, new Color(0.32f, 0.50f, 0.24f, 0.9f), "Map Highlands");
+            }
+            else if (zone.name == "Canyon" || zone.name == "Cliff" || zone.name == "Crater")
+            {
+                CreateTerrainMarker(zone.transform.position, zone.transform.localScale, new Color(0.50f, 0.26f, 0.17f, 0.9f), "Map Rock Formation");
+            }
+            else if (zone.name == "Cave Mouth" || zone.name == "Cave" || zone.name == "Limestone Cave" || zone.name == "Tunnel")
+            {
+                CreateTerrainMarker(zone.transform.position, zone.transform.localScale, new Color(0.08f, 0.08f, 0.09f, 0.9f), "Map Cave");
+            }
+            else if (zone.name == "Valley" || zone.name == "Basin" || zone.name == "Meadow" || zone.name == "Clay Bank")
+            {
+                CreateTerrainMarker(zone.transform.position, zone.transform.localScale, new Color(0.29f, 0.45f, 0.22f, 0.9f), "Map Lowland");
+            }
         }
     }
 
@@ -339,9 +379,18 @@ public class MapWindow : MonoBehaviour
     private Rect GetWorldRect()
     {
         GameObject ground = GameObject.Find("Ground");
+        Terrain terrain = ground != null ? ground.GetComponent<Terrain>() : Terrain.activeTerrain;
+        if (terrain != null)
+        {
+            Vector3 terrainCenter = terrain.transform.position + terrain.terrainData.size * 0.5f;
+            Vector3 size = terrain.terrainData.size;
+            return new Rect(terrainCenter.x - (size.x * 0.5f), terrainCenter.z - (size.z * 0.5f), size.x, size.z);
+        }
+
         if (ground == null)
         {
-            return new Rect(-45f, -30f, 90f, 60f);
+            float half = EnvironmentRuntimeBootstrap.WorldSize * 0.5f;
+            return new Rect(-half, -half, EnvironmentRuntimeBootstrap.WorldSize, EnvironmentRuntimeBootstrap.WorldSize);
         }
 
         Vector3 center = ground.transform.position;

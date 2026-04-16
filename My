@@ -1,0 +1,26 @@
+[Licensing::Module] Trying to connect to existing licensing client channel...
+Built from '6000.3/staging' branch; Version is '6000.3.11f1 (3000ef702840) revision 3145967'; Using compiler version '194234433'; Build Type 'Release'
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-victo" at "2026-04-16T07:02:52.744577Z"
+OS: 'Windows 11  (10.0.26200) Core' Language: 'ko' Physical Memory: 15525 MB
+BatchMode: 1, IsHumanControllingUs: 0, StartBugReporterOnCrash: 0, Is64bit: 1
+System  architecture: x64
+Process architecture: x64
+Date: 2026-04-16T07:02:52Z
+
+COMMAND LINE ARGUMENTS:
+C:\Program Files\Unity\Hub\Editor\6000.3.11f1\Editor\Unity.exe
+-projectPath
+C:\Users\victo\Desktop\dbd\dbd\My
+dbd
+-batchmode
+-nographics
+-executeMethod
+RelayHostEditorLauncher.StartRelayHost
+-relayHost
+-relayMaxConnections
+8
+-logFile
+C:\Users\victo\Desktop\dbd\dbd\My
+dbd\unity-relay-host.log
+Couldn't set project path to: C:/Users/victo/OneDrive/Desktop/dbd/C:/Users/victo/Desktop/dbd/dbd/My
+Exiting without the bug reporter. Application will terminate with return code 1

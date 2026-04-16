@@ -6,16 +6,16 @@ using UnityEngine.EventSystems;
 public class CameraPanZoomController : MonoBehaviour
 {
     // WASD 이동 속도입니다.
-    [SerializeField] private float moveSpeed = 8f;
+    [SerializeField] private float moveSpeed = 45f;
 
     // 마우스 휠 확대/축소 속도입니다.
-    [SerializeField] private float zoomSpeed = 6f;
+    [SerializeField] private float zoomSpeed = 18f;
 
     // 카메라가 너무 낮게 내려가지 않도록 막는 최소 높이입니다.
     [SerializeField] private float minHeight = 3f;
 
     // 카메라가 너무 높게 올라가지 않도록 막는 최대 높이입니다.
-    [SerializeField] private float maxHeight = 18f;
+    [SerializeField] private float maxHeight = 260f;
 
     // 매 프레임 입력을 읽어서 카메라 위치를 바꿉니다.
     private void Update()
@@ -49,7 +49,9 @@ public class CameraPanZoomController : MonoBehaviour
         {
             // normalized는 방향만 남기고 길이를 1로 만든 값입니다.
             // 대각선 이동이 너무 빨라지는 것을 막습니다.
-            transform.position += move.normalized * moveSpeed * Time.deltaTime;
+            float heightScale = Mathf.Clamp(transform.position.y / 35f, 1f, 18f);
+            transform.position += move.normalized * moveSpeed * heightScale * Time.deltaTime;
+            ClampToWorld();
         }
 
         // 마우스 휠 입력입니다. 위로 굴리면 양수, 아래로 굴리면 음수입니다.
@@ -57,9 +59,13 @@ public class CameraPanZoomController : MonoBehaviour
         if (Mathf.Abs(scroll) > 0.01f && !IsPointerOverUi())
         {
             Vector3 currentPosition = transform.position;
-            Vector3 zoomDelta = transform.forward * scroll * zoomSpeed;
+            float heightScale = SessionRoleService.IsDirector
+                ? Mathf.Clamp(currentPosition.y / 80f, 0.35f, 35f)
+                : Mathf.Clamp(currentPosition.y / 80f, 0.35f, 2.8f);
+            Vector3 zoomDelta = transform.forward * scroll * zoomSpeed * heightScale;
             Vector3 nextPosition = currentPosition + zoomDelta;
-            float clampedHeight = Mathf.Clamp(nextPosition.y, minHeight, maxHeight);
+            float roleMaxHeight = SessionRoleService.IsDirector ? 10000f : maxHeight;
+            float clampedHeight = Mathf.Clamp(nextPosition.y, minHeight, roleMaxHeight);
 
             if (!Mathf.Approximately(nextPosition.y, clampedHeight))
             {
@@ -80,6 +86,7 @@ public class CameraPanZoomController : MonoBehaviour
             // y 높이는 minHeight와 maxHeight 사이로 제한합니다.
             nextPosition.y = clampedHeight;
             transform.position = nextPosition;
+            ClampToWorld();
         }
     }
 
@@ -99,5 +106,15 @@ public class CameraPanZoomController : MonoBehaviour
 
         Vector3 currentCenter = centerRay.GetPoint(distance);
         transform.position += targetPosition - currentCenter;
+        ClampToWorld();
+    }
+
+    private void ClampToWorld()
+    {
+        float half = EnvironmentRuntimeBootstrap.WorldSize * 0.5f;
+        Vector3 position = transform.position;
+        position.x = Mathf.Clamp(position.x, -half, half);
+        position.z = Mathf.Clamp(position.z, -half, half);
+        transform.position = position;
     }
 }

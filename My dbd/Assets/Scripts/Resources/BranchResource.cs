@@ -23,6 +23,11 @@ public class BranchResource : MonoBehaviour
     private Text gatherText;
     private float gatherMessageHideAt;
     public bool IsCollectionAnimationActive => isCollectionAnimationActive;
+    public string ItemId => itemId;
+    public string DisplayName => displayName;
+    public float GatherDuration => gatherDuration;
+    public int GatherAmount => gatherAmount;
+    public IReadOnlyList<PersonInventoryItem> ExtraYields => extraYields;
 
     private void Awake()
     {

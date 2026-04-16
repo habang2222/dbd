@@ -45,6 +45,7 @@ public class PersonSpawner : MonoBehaviour
     {
         string displayName = $"Person_{index + 1}";
         Vector3 position = transform.position + new Vector3(index * spacing, 0f, 0f);
+        position.y = EnvironmentRuntimeBootstrap.GetTerrainHeight(position) + 1.2f;
 
         // 지금은 임시 시각화용으로 Cube를 사람처럼 사용합니다.
         GameObject personObject = GameObject.CreatePrimitive(PrimitiveType.Cube);

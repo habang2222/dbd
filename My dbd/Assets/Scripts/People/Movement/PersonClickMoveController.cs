@@ -14,7 +14,7 @@ public class PersonClickMoveController : MonoBehaviour
     [SerializeField] private LayerMask destinationLayers = ~0;
 
     // 카메라에서 마우스 방향으로 얼마나 멀리까지 클릭 검사를 할지 정합니다.
-    [SerializeField] private float maxRayDistance = 500f;
+    [SerializeField] private float maxRayDistance = 5000f;
 
     // Awake는 이 컴포넌트가 처음 준비될 때 Unity가 한 번 호출합니다.
     private void Awake()
@@ -73,10 +73,7 @@ public class PersonClickMoveController : MonoBehaviour
         }
 
         bool run = ActionWindow.RunEnabled;
-        if (MovementCommandService.TryMove(selectedPerson, hit.point, run))
-        {
-            Debug.Log($"Moved {selectedPerson.PersonName} destination to {hit.point}.");
-        }
+        MovementCommandService.TryMove(selectedPerson, hit.point, run);
     }
 
     // 씬 안의 모든 PersonComponent를 돌면서 isSelected가 true인 사람을 찾습니다.
@@ -104,6 +101,6 @@ public class PersonClickMoveController : MonoBehaviour
     // 이름 검사라 단순하지만, 초반 프로젝트에서는 찾기 쉽고 이해하기 쉬운 방식입니다.
     private static bool IsDestinationSurface(Collider collider)
     {
-        return collider != null && collider.gameObject.name == "Ground";
+        return collider != null && (collider.gameObject.name == "Ground" || collider is TerrainCollider);
     }
 }

@@ -18,6 +18,8 @@ public static class PersonRuntimeBootstrap
         {
             EnsureExistingPeopleCanMove();
             EnvironmentRuntimeBootstrap.EnsureEnvironment();
+            EnsureChunksAroundPeople();
+            SessionRoleService.ApplyDefaultOwnership();
             PositionCamera();
             EnsureClickMoveController();
             return;
@@ -39,7 +41,8 @@ public static class PersonRuntimeBootstrap
             // 지금은 모델이 없으므로 Cube를 사람 대용으로 씁니다.
             GameObject personObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
             personObject.name = personName;
-            personObject.transform.position = new Vector3(-3f + (i * 2f), 1f, 4f);
+            Vector3 spawnPosition = GetTerrainPosition(new Vector3(-6f + (i * 3f), 0f, 8f), 1.2f);
+            personObject.transform.position = spawnPosition;
             personObject.transform.localScale = new Vector3(1.5f, 1.5f, 1.5f);
             EnsurePersonCollision(personObject);
 
@@ -62,16 +65,19 @@ public static class PersonRuntimeBootstrap
                 personName,
                 new PersonStats(100f, 10f + i, 100f),
                 inventory);
+            person.SetOwnerClient(i == 0 ? SessionRoleService.PlayerClientId : SessionRoleService.DirectorControlledClientId);
 
             // 이동 기능을 붙입니다. 처음에는 멈춘 상태입니다.
             PersonMover mover = personObject.AddComponent<PersonMover>();
-            mover.InitializeIdle(personObject.transform.position, 1.5f + (i * 0.25f));
+            mover.InitializeIdle(spawnPosition, 1.5f + (i * 0.25f));
             personObject.AddComponent<UnitCombatController>();
             personObject.AddComponent<UnitDeathShrink>();
 
             manager.Register(person);
         }
 
+        EnsureChunksAroundPeople();
+        SessionRoleService.ApplyDefaultOwnership();
         PositionCamera();
         EnsureClickMoveController();
         Debug.Log("Created runtime Person_1 ~ Person_4 cubes.");
@@ -93,10 +99,11 @@ public static class PersonRuntimeBootstrap
             camera = cameraObject.AddComponent<Camera>();
         }
 
-        // 위에서 비스듬히 내려다보는 위치입니다.
-        camera.transform.position = new Vector3(0f, 10f, -8f);
-        camera.transform.rotation = Quaternion.Euler(55f, 0f, 0f);
-        camera.fieldOfView = 50f;
+        Vector3 focus = GetCameraFocus();
+        float focusHeight = EnvironmentRuntimeBootstrap.GetTerrainHeight(focus);
+        camera.transform.position = new Vector3(focus.x, focusHeight + 55f, focus.z - 70f);
+        camera.transform.rotation = Quaternion.Euler(58f, 0f, 0f);
+        camera.fieldOfView = 55f;
 
         // WASD/휠 카메라 조작 스크립트가 없으면 붙여 줍니다.
         if (camera.GetComponent<CameraPanZoomController>() == null)
@@ -117,6 +124,21 @@ public static class PersonRuntimeBootstrap
         controllerObject.AddComponent<PersonClickMoveController>();
     }
 
+    private static void EnsureChunksAroundPeople()
+    {
+        PersonComponent[] people = Object.FindObjectsByType<PersonComponent>(FindObjectsSortMode.None);
+        if (people.Length == 0)
+        {
+            ResourceRuntimeBootstrap.EnsureResourceChunksAround(new Vector3(0f, 0f, 8f), WorldChunkService.InitialChunkRadius);
+            return;
+        }
+
+        for (int i = 0; i < people.Length; i++)
+        {
+            ResourceRuntimeBootstrap.EnsureResourceChunksAround(people[i].transform.position, WorldChunkService.InitialChunkRadius);
+        }
+    }
+
     // 이미 씬에 놓여 있는 사람들에게 이동 기능과 충돌 설정을 보강합니다.
     private static void EnsureExistingPeopleCanMove()
     {
@@ -126,6 +148,7 @@ public static class PersonRuntimeBootstrap
             PersonComponent person = people[i];
             EnsurePersonCollision(person.gameObject);
             EnsurePersonColor(person.gameObject, i);
+            LiftPersonOntoTerrain(person.transform);
             if (person.GetComponent<UnitCombatController>() == null)
             {
                 person.gameObject.AddComponent<UnitCombatController>();
@@ -143,6 +166,34 @@ public static class PersonRuntimeBootstrap
 
             PersonMover mover = person.gameObject.AddComponent<PersonMover>();
             mover.InitializeIdle(person.transform.position, 1.5f + (i * 0.25f));
+        }
+    }
+
+    private static Vector3 GetCameraFocus()
+    {
+        PersonComponent[] people = Object.FindObjectsByType<PersonComponent>(FindObjectsSortMode.None);
+        if (people.Length > 0)
+        {
+            return people[0].transform.position;
+        }
+
+        return GetTerrainPosition(new Vector3(0f, 0f, 8f), 0f);
+    }
+
+    private static Vector3 GetTerrainPosition(Vector3 position, float yOffset)
+    {
+        position.y = EnvironmentRuntimeBootstrap.GetTerrainHeight(position) + yOffset;
+        return position;
+    }
+
+    private static void LiftPersonOntoTerrain(Transform personTransform)
+    {
+        Vector3 position = personTransform.position;
+        float terrainY = EnvironmentRuntimeBootstrap.GetTerrainHeight(position);
+        if (position.y < terrainY + 0.4f || position.y > terrainY + 8f)
+        {
+            position.y = terrainY + 1.2f;
+            personTransform.position = position;
         }
     }
 

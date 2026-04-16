@@ -4,7 +4,7 @@ using UnityEngine.AI;
 public static class AntiCheatService
 {
     private const float FreezeSeconds = 180f;
-    private const float MaxCommandDistance = 130f;
+    private const float MaxCommandDistance = 2400f;
     private const float NavMeshSampleRadius = 5f;
     private const int MaxSingleInventoryChange = 500;
 
@@ -39,13 +39,18 @@ public static class AntiCheatService
         if (distance > MaxCommandDistance)
         {
             reason = "move command too far";
-            Punish(person, reason);
             return false;
         }
 
         if (!NavMesh.SamplePosition(destination, out _, NavMeshSampleRadius, NavMesh.AllAreas))
         {
             reason = "destination outside navmesh";
+            return false;
+        }
+
+        if (!TerrainZoneInfo.CanStandAt(destination))
+        {
+            reason = "destination blocked by terrain";
             return false;
         }
 

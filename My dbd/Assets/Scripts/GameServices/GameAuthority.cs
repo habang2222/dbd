@@ -36,7 +36,12 @@ public static class GameAuthority
             return "dead unit command";
         }
 
-        if (!IsOwnedByLocalClient(person))
+        if (SessionRoleService.IsPlayer && !ServerWorldStateService.IsOpenToPlayers)
+        {
+            return "world is still in director setup";
+        }
+
+        if (!SessionRoleService.CanControl(person))
         {
             return "ownership violation";
         }
@@ -46,7 +51,7 @@ public static class GameAuthority
 
     public static bool IsOwnedByLocalClient(PersonComponent person)
     {
-        return person != null && person.OwnerClientId == LocalClientId;
+        return SessionRoleService.CanControl(person);
     }
 
     public static void EnsureLocalOwnership(PersonComponent person)
@@ -56,12 +61,12 @@ public static class GameAuthority
             return;
         }
 
-        if (OfflineLocalMode || string.IsNullOrWhiteSpace(person.OwnerClientId))
+        if (string.IsNullOrWhiteSpace(person.OwnerClientId))
         {
-            person.SetOwnerClient(LocalClientId);
+            person.SetOwnerClient(SessionRoleService.PlayerClientId);
         }
 
-        if (OfflineLocalMode || string.IsNullOrWhiteSpace(person.TeamId))
+        if (string.IsNullOrWhiteSpace(person.TeamId))
         {
             person.SetTeam(LocalTeamId);
         }

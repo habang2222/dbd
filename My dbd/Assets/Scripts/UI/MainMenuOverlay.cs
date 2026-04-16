@@ -9,6 +9,7 @@ public class MainMenuOverlay : MonoBehaviour
 
     private Canvas canvas;
     private Font font;
+    private InputField nicknameInput;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void CreateOnSceneLoad()
@@ -65,8 +66,80 @@ public class MainMenuOverlay : MonoBehaviour
         blockerImage.color = new Color(0.04f, 0.05f, 0.04f, 0.96f);
         blockerImage.raycastTarget = true;
 
+        CreateTitle(blocker.transform);
+        nicknameInput = CreateNicknameInput(blocker.transform);
         Button playButton = CreatePlayButton(blocker.transform);
         playButton.onClick.AddListener(StartGame);
+    }
+
+    private void CreateTitle(Transform parent)
+    {
+        GameObject titleObject = new GameObject("Title");
+        titleObject.transform.SetParent(parent, false);
+
+        RectTransform rect = titleObject.AddComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = new Vector2(0f, 150f);
+        rect.sizeDelta = new Vector2(520f, 72f);
+
+        Text title = titleObject.AddComponent<Text>();
+        title.font = font;
+        title.text = "닉네임을 입력하세요";
+        title.fontSize = 36;
+        title.alignment = TextAnchor.MiddleCenter;
+        title.color = Color.white;
+    }
+
+    private InputField CreateNicknameInput(Transform parent)
+    {
+        GameObject inputObject = new GameObject("Nickname Input");
+        inputObject.transform.SetParent(parent, false);
+
+        RectTransform rect = inputObject.AddComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = new Vector2(0f, 62f);
+        rect.sizeDelta = new Vector2(420f, 58f);
+
+        Image image = inputObject.AddComponent<Image>();
+        image.color = new Color(0.12f, 0.14f, 0.13f, 1f);
+
+        InputField input = inputObject.AddComponent<InputField>();
+        input.characterLimit = 18;
+        input.contentType = InputField.ContentType.Standard;
+        input.text = PlayerProfileService.HasNickname ? PlayerProfileService.LocalNickname : string.Empty;
+
+        Text text = CreateInputText(inputObject.transform, "Text", string.Empty, TextAnchor.MiddleLeft, Color.white);
+        text.rectTransform.offsetMin = new Vector2(18f, 0f);
+        text.rectTransform.offsetMax = new Vector2(-18f, 0f);
+        input.textComponent = text;
+
+        Text placeholder = CreateInputText(inputObject.transform, "Placeholder", "Unknown1", TextAnchor.MiddleLeft, new Color(0.68f, 0.72f, 0.69f, 1f));
+        placeholder.rectTransform.offsetMin = new Vector2(18f, 0f);
+        placeholder.rectTransform.offsetMax = new Vector2(-18f, 0f);
+        input.placeholder = placeholder;
+
+        return input;
+    }
+
+    private Text CreateInputText(Transform parent, string name, string value, TextAnchor alignment, Color color)
+    {
+        GameObject textObject = new GameObject(name);
+        textObject.transform.SetParent(parent, false);
+        RectTransform rect = textObject.AddComponent<RectTransform>();
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+
+        Text text = textObject.AddComponent<Text>();
+        text.font = font;
+        text.fontSize = 24;
+        text.alignment = alignment;
+        text.color = color;
+        text.text = value;
+        return text;
     }
 
     private Button CreatePlayButton(Transform parent)
@@ -78,7 +151,7 @@ public class MainMenuOverlay : MonoBehaviour
         rect.anchorMin = new Vector2(0.5f, 0.5f);
         rect.anchorMax = new Vector2(0.5f, 0.5f);
         rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = Vector2.zero;
+        rect.anchoredPosition = new Vector2(0f, -28f);
         rect.sizeDelta = new Vector2(320f, 84f);
 
         Image image = buttonObject.AddComponent<Image>();
@@ -113,6 +186,7 @@ public class MainMenuOverlay : MonoBehaviour
 
     private void StartGame()
     {
+        PlayerProfileService.SetLocalNickname(nicknameInput != null ? nicknameInput.text : string.Empty);
         hasStarted = true;
         Time.timeScale = GameTimeScale;
         Destroy(gameObject);

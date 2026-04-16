@@ -19,6 +19,12 @@ public class MainGameTopBar : MonoBehaviour
         "\uCC3D",
         "\uC124\uC815"
     };
+    private readonly string[] directorTabLabels =
+    {
+        "\uC0DD\uC131",
+        "\uC9C0\uD615",
+        "\uBBF8\uC815"
+    };
 
     private Font font;
     private int selectedIndex;
@@ -40,6 +46,7 @@ public class MainGameTopBar : MonoBehaviour
         Instance = this;
         font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         CreateUi();
+        RefreshForRole();
         SelectTab(0);
     }
 
@@ -90,6 +97,31 @@ public class MainGameTopBar : MonoBehaviour
         }
     }
 
+    public void RefreshForRole()
+    {
+        string[] labels = SessionRoleService.IsDirector ? directorTabLabels : tabLabels;
+        for (int i = 0; i < menuButtons.Count; i++)
+        {
+            bool active = i < labels.Length;
+            menuButtons[i].gameObject.SetActive(active);
+            if (!active)
+            {
+                continue;
+            }
+
+            Text label = menuButtons[i].GetComponentInChildren<Text>();
+            if (label != null)
+            {
+                label.text = labels[i];
+            }
+        }
+
+        if (selectedIndex >= labels.Length)
+        {
+            selectedIndex = 0;
+        }
+    }
+
     private Button CreateTabButton(Transform parent, string labelText)
     {
         GameObject buttonObject = new GameObject("Top Menu Tab");
@@ -127,6 +159,12 @@ public class MainGameTopBar : MonoBehaviour
 
     private void SelectTab(int index)
     {
+        if (SessionRoleService.IsDirector)
+        {
+            SelectDirectorTab(index);
+            return;
+        }
+
         selectedIndex = index;
         for (int i = 0; i < menuButtons.Count; i++)
         {
@@ -172,6 +210,81 @@ public class MainGameTopBar : MonoBehaviour
             GameObject windowMenuPanel = new GameObject("Window Menu Panel");
             windowMenuPanel.AddComponent<WindowMenuPanel>();
             WindowMenuPanel.Instance.Show();
+        }
+    }
+
+    private void SelectDirectorTab(int index)
+    {
+        selectedIndex = Mathf.Clamp(index, 0, directorTabLabels.Length - 1);
+        for (int i = 0; i < menuButtons.Count; i++)
+        {
+            if (!menuButtons[i].gameObject.activeSelf)
+            {
+                continue;
+            }
+
+            Image image = menuButtons[i].image;
+            image.color = i == selectedIndex
+                ? new Color(0.20f, 0.20f, 0.18f, 0.98f)
+                : new Color(0.09f, 0.09f, 0.09f, 0.95f);
+        }
+
+        if (DirectorWorldTool.Instance == null)
+        {
+            return;
+        }
+
+        if (selectedIndex == 0)
+        {
+            ShowDirectorCreationWindow();
+        }
+        else if (selectedIndex == 1)
+        {
+            ShowDirectorTerrainWindow();
+        }
+        else
+        {
+            HideDirectorWindows();
+            DirectorWorldTool.Instance.SetMode(DirectorToolMode.None);
+        }
+    }
+
+    private static void ShowDirectorCreationWindow()
+    {
+        if (DirectorCreationWindow.Instance != null)
+        {
+            DirectorCreationWindow.Instance.Show();
+        }
+
+        if (DirectorTerrainWindow.Instance != null)
+        {
+            DirectorTerrainWindow.Instance.Hide();
+        }
+    }
+
+    private static void ShowDirectorTerrainWindow()
+    {
+        if (DirectorTerrainWindow.Instance != null)
+        {
+            DirectorTerrainWindow.Instance.Show();
+        }
+
+        if (DirectorCreationWindow.Instance != null)
+        {
+            DirectorCreationWindow.Instance.Hide();
+        }
+    }
+
+    private static void HideDirectorWindows()
+    {
+        if (DirectorCreationWindow.Instance != null)
+        {
+            DirectorCreationWindow.Instance.Hide();
+        }
+
+        if (DirectorTerrainWindow.Instance != null)
+        {
+            DirectorTerrainWindow.Instance.Hide();
         }
     }
 
