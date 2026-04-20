@@ -32,6 +32,11 @@ public class TreeDropMaintainer : MonoBehaviour
 
     public void RefillNow()
     {
+        if (ResourceRuntimeBootstrap.IsWorldCleared)
+        {
+            return;
+        }
+
         int leafCount = CountNearby("Leaf");
         int branchCount = CountNearby("Branch");
 

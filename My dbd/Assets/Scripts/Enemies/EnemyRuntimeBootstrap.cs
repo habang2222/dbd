@@ -6,6 +6,11 @@ public static class EnemyRuntimeBootstrap
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void CreateEnemiesIfMissing()
     {
+        if (PlayerPrefs.GetInt(ResourceRuntimeBootstrap.WorldClearedKey, 0) == 1)
+        {
+            return;
+        }
+
         EnvironmentRuntimeBootstrap.EnsureEnvironment();
 
         EnemyComponent[] existingEnemies = Object.FindObjectsByType<EnemyComponent>(FindObjectsSortMode.None);

@@ -4,6 +4,8 @@ using UnityEngine;
 
 public static class ResourceRuntimeBootstrap
 {
+    public const string WorldClearedKey = "DBD.WorldCleared";
+    private const bool AutomaticWorldGenerationEnabled = false;
     private const string WorldGenerationSeedKey = "DBD.WorldGenerationSeed";
     private const float LandformXSpread = 1f;
     private const float LandformZSpread = 1f;
@@ -11,49 +13,24 @@ public static class ResourceRuntimeBootstrap
     private static readonly Vector2 SpawnZRange = new(-900f, 900f);
     private static readonly HashSet<Vector2Int> GeneratedResourceChunks = new();
 
+    public static bool IsWorldCleared => PlayerPrefs.GetInt(WorldClearedKey, 0) == 1;
+
+    public static void ClearGeneratedResourceChunks()
+    {
+        GeneratedResourceChunks.Clear();
+    }
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void CreateResourcesIfMissing()
     {
-        BranchResource[] existingResources = Object.FindObjectsByType<BranchResource>(FindObjectsSortMode.None);
-        bool worldAlreadyReady = existingResources.Length > 12
-            && GameObject.Find("Tree") != null
-            && GameObject.Find("Workbench") != null
-            && GameObject.Find("River") != null
-            && GameObject.Find("Mountain") != null
-            && GameObject.Find("High Mountain") != null
-            && GameObject.Find("Waterfall") != null
-            && GameObject.Find("Canyon") != null;
-
-        if (worldAlreadyReady)
-        {
-            PaintTerrainZones();
-            CreateTerrainLandforms();
-            CreateWaterLandforms();
-            EnsureResourceChunksAround(new Vector3(0f, 0f, 8f), WorldChunkService.InitialChunkRadius);
-            foreach (BranchResource resource in existingResources)
-            {
-                EnsureResourceCollider(resource.gameObject, Vector3.one * 1.8f);
-            }
-
-            EnsureStarterResourcesNearSpawn();
-            return;
-        }
-
-        Random.State previousRandomState = Random.state;
-        Random.InitState(GetOrCreateWorldGenerationSeed());
-
         EnvironmentRuntimeBootstrap.EnsureEnvironment();
         PaintTerrainZones();
-        CreateTerrainLandforms();
-        CreateRiver();
-        CreateWaterLandforms();
-        CreateTrees();
-        CreateLooseTreeDrops();
-        EnsureResourceChunksAround(new Vector3(0f, 0f, 8f), WorldChunkService.InitialChunkRadius);
-        CreateStarterResourcesNearSpawn();
-        CreateWorkbench();
+        ClearGeneratedResourceChunks();
 
-        Random.state = previousRandomState;
+        if (IsWorldCleared)
+        {
+            return;
+        }
     }
 
     private static void PaintTerrainZones()
@@ -74,20 +51,6 @@ public static class ResourceRuntimeBootstrap
             {
                 Object.Destroy(oldZone);
             }
-        }
-
-        CreateTerrainZone("Meadow", new Vector3(-16f, 0.012f, 16f), new Vector3(24f, 0.04f, 15f), new Color(0.30f, 0.56f, 0.24f, 1f), PrimitiveType.Cube);
-        CreateTerrainZone("Dirt Zone", new Vector3(17f, 0.014f, -2f), new Vector3(18f, 0.04f, 14f), new Color(0.27f, 0.34f, 0.18f, 1f), PrimitiveType.Cube);
-        CreateTerrainZone("Clay Bank", new Vector3(-26f, 0.016f, -10f), new Vector3(13f, 0.04f, 8f), new Color(0.44f, 0.30f, 0.22f, 1f), PrimitiveType.Cube);
-
-        for (int i = 0; i < 5; i++)
-        {
-            CreateTerrainZone(
-                "Sand Zone",
-                new Vector3(-31f + i * 14f, 0.018f, -15f + Mathf.Sin(i * 1.4f) * 3f),
-                new Vector3(Random.Range(8f, 13f), 0.04f, Random.Range(4f, 7f)),
-                new Color(0.78f, 0.58f, 0.25f, 1f),
-                PrimitiveType.Cube);
         }
     }
 
@@ -182,16 +145,6 @@ public static class ResourceRuntimeBootstrap
                 PrimitiveType.Cube);
         }
 
-        for (int i = 0; i < 8; i++)
-        {
-            CreateTerrainZone(
-                "Canyon",
-                new Vector3(-34f + i * 8.8f, 0.08f, 2f + Mathf.Sin(i * 0.7f) * 4f),
-                new Vector3(Random.Range(6f, 9f), 0.28f, Random.Range(2.8f, 4.2f)),
-                new Color(0.50f, 0.26f, 0.17f, 1f),
-                PrimitiveType.Cube);
-        }
-
         for (int i = 0; i < 5; i++)
         {
             CreateTerrainZone(
@@ -227,7 +180,6 @@ public static class ResourceRuntimeBootstrap
             narrowRiver.transform.rotation = Quaternion.Euler(0f, -18f + i * 7f, 0f);
         }
 
-        CreateTerrainZone("Waterfall", new Vector3(30f, 1.05f, -4f), new Vector3(2.5f, 3.4f, 0.55f), new Color(0.70f, 0.88f, 1f, 0.9f), PrimitiveType.Cube);
         CreateTerrainZone("Pond", new Vector3(-18f, 0.075f, 20f), new Vector3(7f, 0.08f, 4.8f), new Color(0.09f, 0.38f, 0.62f, 0.9f), PrimitiveType.Sphere);
         CreateTerrainZone("Lake", new Vector3(9f, 0.07f, 23f), new Vector3(12f, 0.08f, 7f), new Color(0.08f, 0.34f, 0.72f, 0.9f), PrimitiveType.Sphere);
         CreateTerrainZone("Wetland", new Vector3(-30f, 0.045f, 11f), new Vector3(11f, 0.05f, 7f), new Color(0.13f, 0.31f, 0.20f, 1f), PrimitiveType.Cube);
@@ -384,19 +336,24 @@ public static class ResourceRuntimeBootstrap
         SpawnSeries("branch", "Branch", 5, 4, 0.1f, new Color(0.45f, 0.25f, 0.10f, 1f), PrimitiveType.Cube, new Vector3(0.75f, 0.12f, 0.18f), "Meadow", "Hill", "Valley");
         SpawnSeries("wood", "Wood", 6, 3, 10f, new Color(0.36f, 0.19f, 0.08f, 1f), PrimitiveType.Cube, new Vector3(0.8f, 0.45f, 0.45f), "Meadow", "Hill");
         SpawnSeries("sand", "Sand", 3, 5, 1.2f, new Color(0.78f, 0.58f, 0.25f, 1f), PrimitiveType.Sphere, new Vector3(0.65f, 0.18f, 0.65f), "Sand Zone", "Wide River", "Lake");
-        SpawnSeries("stone", "Stone", 5, 5, 30f, new Color(0.42f, 0.43f, 0.45f, 1f), PrimitiveType.Cube, new Vector3(0.75f, 0.45f, 0.65f), "Mountain", "High Mountain", "Great Mountain", "Rocky Ridge", "Canyon", "Cliff", "Crater");
+        SpawnSeries("stone", "Stone", 5, 5, 30f, new Color(0.42f, 0.43f, 0.45f, 1f), PrimitiveType.Cube, new Vector3(0.75f, 0.45f, 0.65f), "Mountain", "High Mountain", "Great Mountain", "Rocky Ridge", "Cliff", "Crater");
         SpawnSeries("dirt", "Dirt", 4, 4, 1.5f, new Color(0.24f, 0.48f, 0.20f, 1f), PrimitiveType.Sphere, new Vector3(0.65f, 0.18f, 0.65f), "Dirt Zone", "Clay Bank", "Basin", "Valley");
-        SpawnSeries("coal", "Coal", 3, 4, 18f, new Color(0.05f, 0.05f, 0.05f, 1f), PrimitiveType.Cube, new Vector3(0.65f, 0.45f, 0.65f), "Mountain", "High Mountain", "Canyon", "Cave Mouth", "Cave", "Tunnel");
-        SpawnSeries("copper", "Copper", 3, 4, 24f, new Color(0.75f, 0.34f, 0.14f, 1f), PrimitiveType.Cube, new Vector3(0.65f, 0.45f, 0.65f), "Rocky Ridge", "Canyon", "Plateau");
-        SpawnResource("lead", "Lead", 4, 26f, new Color(0.28f, 0.30f, 0.35f, 1f), PrimitiveType.Cube, new Vector3(0.65f, 0.45f, 0.65f), "High Mountain", "Canyon", "Cave Mouth", "Cave");
+        SpawnSeries("coal", "Coal", 3, 4, 18f, new Color(0.05f, 0.05f, 0.05f, 1f), PrimitiveType.Cube, new Vector3(0.65f, 0.45f, 0.65f), "Mountain", "High Mountain", "Cave Mouth", "Cave", "Tunnel");
+        SpawnSeries("copper", "Copper", 3, 4, 24f, new Color(0.75f, 0.34f, 0.14f, 1f), PrimitiveType.Cube, new Vector3(0.65f, 0.45f, 0.65f), "Rocky Ridge", "Plateau");
+        SpawnResource("lead", "Lead", 4, 26f, new Color(0.28f, 0.30f, 0.35f, 1f), PrimitiveType.Cube, new Vector3(0.65f, 0.45f, 0.65f), "High Mountain", "Cave Mouth", "Cave");
         SpawnSeries("tin", "Tin", 3, 4, 22f, new Color(0.70f, 0.72f, 0.70f, 1f), PrimitiveType.Cube, new Vector3(0.65f, 0.45f, 0.65f), "Rocky Ridge", "Mountain", "Plateau");
         SpawnSeries("iron", "Iron", 3, 5, 30f, new Color(0.50f, 0.45f, 0.40f, 1f), PrimitiveType.Cube, new Vector3(0.7f, 0.5f, 0.7f), "High Mountain", "Great Mountain", "Mountain");
-        SpawnSeries("water", "Water", 3, 4, 0.8f, new Color(0.12f, 0.35f, 0.90f, 1f), PrimitiveType.Sphere, new Vector3(0.55f, 0.12f, 0.55f), "River", "Wide River", "Narrow River", "Waterfall", "Pond", "Lake", "Wetland");
-        SpawnSeries("flint", "Flint", 3, 5, 8f, new Color(0.18f, 0.19f, 0.20f, 1f), PrimitiveType.Cube, new Vector3(0.45f, 0.25f, 0.35f), "Canyon", "Rocky Ridge", "Cliff", "Crater", "Limestone Cave", "Tunnel");
+        SpawnSeries("water", "Water", 3, 4, 0.8f, new Color(0.12f, 0.35f, 0.90f, 1f), PrimitiveType.Sphere, new Vector3(0.55f, 0.12f, 0.55f), "River", "Wide River", "Narrow River", "Pond", "Lake", "Wetland");
+        SpawnSeries("flint", "Flint", 3, 5, 8f, new Color(0.18f, 0.19f, 0.20f, 1f), PrimitiveType.Cube, new Vector3(0.45f, 0.25f, 0.35f), "Rocky Ridge", "Cliff", "Crater", "Limestone Cave", "Tunnel");
     }
 
     public static void EnsureResourceChunksAround(Vector3 worldPosition, int radius)
     {
+        if (!AutomaticWorldGenerationEnabled || IsWorldCleared)
+        {
+            return;
+        }
+
         Vector2Int center = WorldChunkService.GetChunkCoord(worldPosition);
         for (int z = -radius; z <= radius; z++)
         {
@@ -627,6 +584,11 @@ public static class ResourceRuntimeBootstrap
 
     public static GameObject CreateTreeDrop(string itemId, string displayName, Vector3 position)
     {
+        if (!AutomaticWorldGenerationEnabled || IsWorldCleared)
+        {
+            return null;
+        }
+
         float size = Random.Range(0.65f, 1.4f);
         bool isLeaf = itemId.StartsWith("leaf");
         GameObject drop = GameObject.CreatePrimitive(isLeaf ? PrimitiveType.Sphere : PrimitiveType.Cube);

@@ -391,6 +391,11 @@ public class UnitListPanel : MonoBehaviour
 
     private static string GetDisplayState(PersonComponent person)
     {
+        if (AntiCheatService.IsFrozen(person))
+        {
+            return "3분 이동 잠금";
+        }
+
         if (UnitCombatController.IsRetreating(person) && IsNearAnyEnemy(person, 5f))
         {
             return "\uD6C4\uD1F4 \uC911";
@@ -417,6 +422,11 @@ public class UnitListPanel : MonoBehaviour
 
     private static string GetDisplayAction(PersonComponent person)
     {
+        if (AntiCheatService.IsFrozen(person))
+        {
+            return "DON'T CHEAT";
+        }
+
         if (UnitCombatController.IsRetreating(person) && IsNearAnyEnemy(person, 5f))
         {
             return "\uC7AC\uC815\uBE44";
@@ -437,7 +447,7 @@ public class UnitListPanel : MonoBehaviour
 
     private static Color GetRowColor(PersonComponent person)
     {
-        if (UnitCombatController.IsPersonInCombat(person))
+        if (UnitCombatController.IsPersonInCombat(person) || AntiCheatService.IsFrozen(person))
         {
             float blink = Mathf.PingPong(Time.unscaledTime * 4f, 1f);
             return Color.Lerp(new Color(0.18f, 0.04f, 0.04f, 0.95f), new Color(0.78f, 0.05f, 0.04f, 0.95f), blink);

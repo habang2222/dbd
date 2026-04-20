@@ -13,14 +13,8 @@ public enum DirectorToolMode
     RaiseTerrain,
     LowerTerrain,
     FlattenTerrain,
-    CreateMountain,
-    CreateCanyon,
     BrushMeadow,
-    BrushForest,
-    BrushMountain,
-    BrushCanyon,
-    BrushRiver,
-    BrushWetland
+    BrushForest
 }
 
 public class DirectorWorldTool : MonoBehaviour
@@ -187,29 +181,11 @@ public class DirectorWorldTool : MonoBehaviour
             case DirectorToolMode.FlattenTerrain:
                 FlattenTerrain(hit.point);
                 break;
-            case DirectorToolMode.CreateMountain:
-                CreateMountain(hit.point);
-                break;
-            case DirectorToolMode.CreateCanyon:
-                CreateCanyon(hit.point);
-                break;
             case DirectorToolMode.BrushMeadow:
                 AddIntentZone(DirectorZoneType.Meadow, hit.point);
                 break;
             case DirectorToolMode.BrushForest:
                 AddIntentZone(DirectorZoneType.Forest, hit.point);
-                break;
-            case DirectorToolMode.BrushMountain:
-                AddIntentZone(DirectorZoneType.Mountain, hit.point);
-                break;
-            case DirectorToolMode.BrushCanyon:
-                AddIntentZone(DirectorZoneType.Canyon, hit.point);
-                break;
-            case DirectorToolMode.BrushRiver:
-                AddIntentZone(DirectorZoneType.River, hit.point);
-                break;
-            case DirectorToolMode.BrushWetland:
-                AddIntentZone(DirectorZoneType.Wetland, hit.point);
                 break;
         }
     }
@@ -376,77 +352,6 @@ public class DirectorWorldTool : MonoBehaviour
         data.SetHeights(startX, startZ, heights);
     }
 
-    private void CreateMountain(Vector3 worldPosition)
-    {
-        Terrain terrain = Terrain.activeTerrain;
-        if (terrain == null)
-        {
-            return;
-        }
-
-        TerrainData data = terrain.terrainData;
-        Vector3 local = worldPosition - terrain.transform.position;
-        int centerX = Mathf.RoundToInt(local.x / data.size.x * (data.heightmapResolution - 1));
-        int centerZ = Mathf.RoundToInt(local.z / data.size.z * (data.heightmapResolution - 1));
-        int radiusSamples = Mathf.Max(2, Mathf.RoundToInt(95f / data.size.x * data.heightmapResolution));
-        ApplyLandform(data, centerX, centerZ, radiusSamples, 58f / data.size.y, 0.42f, true);
-    }
-
-    private void CreateCanyon(Vector3 worldPosition)
-    {
-        Terrain terrain = Terrain.activeTerrain;
-        if (terrain == null)
-        {
-            return;
-        }
-
-        TerrainData data = terrain.terrainData;
-        Vector3 local = worldPosition - terrain.transform.position;
-        int centerX = Mathf.RoundToInt(local.x / data.size.x * (data.heightmapResolution - 1));
-        int centerZ = Mathf.RoundToInt(local.z / data.size.z * (data.heightmapResolution - 1));
-        int radiusSamples = Mathf.Max(2, Mathf.RoundToInt(115f / data.size.x * data.heightmapResolution));
-        ApplyLandform(data, centerX, centerZ, radiusSamples, -42f / data.size.y, 0.32f, false);
-    }
-
-    private static void ApplyLandform(TerrainData data, int centerX, int centerZ, int radiusSamples, float heightDelta, float rimDelta, bool peak)
-    {
-        int startX = Mathf.Clamp(centerX - radiusSamples, 0, data.heightmapResolution - 1);
-        int startZ = Mathf.Clamp(centerZ - radiusSamples, 0, data.heightmapResolution - 1);
-        int width = Mathf.Clamp(centerX + radiusSamples, 0, data.heightmapResolution - 1) - startX + 1;
-        int height = Mathf.Clamp(centerZ + radiusSamples, 0, data.heightmapResolution - 1) - startZ + 1;
-        float[,] heights = data.GetHeights(startX, startZ, width, height);
-
-        for (int z = 0; z < height; z++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                float dx = (startX + x - centerX) / (float)radiusSamples;
-                float dz = (startZ + z - centerZ) / (float)radiusSamples;
-                float distance = Mathf.Sqrt(dx * dx + dz * dz);
-                if (distance > 1f)
-                {
-                    continue;
-                }
-
-                float core = Mathf.Clamp01(1f - distance);
-                float noise = Mathf.PerlinNoise((startX + x) * 0.11f, (startZ + z) * 0.11f);
-                if (peak)
-                {
-                    float ridge = Mathf.Pow(core, 1.7f) * (0.78f + noise * 0.44f);
-                    heights[z, x] = Mathf.Clamp01(heights[z, x] + heightDelta * ridge);
-                }
-                else
-                {
-                    float trench = Mathf.Pow(core, 0.75f) * (0.82f + noise * 0.22f);
-                    float rim = Mathf.Clamp01(1f - Mathf.Abs(distance - 0.72f) / 0.16f) * rimDelta;
-                    heights[z, x] = Mathf.Clamp01(heights[z, x] + heightDelta * trench + rim);
-                }
-            }
-        }
-
-        data.SetHeights(startX, startZ, heights);
-    }
-
     private bool TryGetWorldHit(out RaycastHit hit)
     {
         Camera camera = Camera.main;
@@ -485,11 +390,7 @@ public class DirectorWorldTool : MonoBehaviour
     private static bool IsIntentPaintMode(DirectorToolMode mode)
     {
         return mode == DirectorToolMode.BrushMeadow
-            || mode == DirectorToolMode.BrushForest
-            || mode == DirectorToolMode.BrushMountain
-            || mode == DirectorToolMode.BrushCanyon
-            || mode == DirectorToolMode.BrushRiver
-            || mode == DirectorToolMode.BrushWetland;
+            || mode == DirectorToolMode.BrushForest;
     }
 
     private static void RefreshDirectorUi()

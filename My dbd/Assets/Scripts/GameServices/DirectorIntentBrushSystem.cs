@@ -66,6 +66,14 @@ public class DirectorIntentBrushSystem : MonoBehaviour
 
     public void SelectBrush(DirectorIntentType intent)
     {
+        if (intent != DirectorIntentType.Meadow && intent != DirectorIntentType.Forest)
+        {
+            paintEnabled = false;
+            currentIntent = DirectorIntentType.Meadow;
+            RefreshTerrainWindow();
+            return;
+        }
+
         currentIntent = intent;
         paintEnabled = true;
         if (DirectorWorldTool.Instance != null)
@@ -280,6 +288,11 @@ public class DirectorIntentBrushSystem : MonoBehaviour
 
     private static void SpawnPostProcessDetails(DirectorIntentStroke stroke, Transform parent)
     {
+        if (ResourceRuntimeBootstrap.IsWorldCleared)
+        {
+            return;
+        }
+
         Random.State previousState = Random.state;
         Random.InitState(GetStrokeSeed(stroke));
 

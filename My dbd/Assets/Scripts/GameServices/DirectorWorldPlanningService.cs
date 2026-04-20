@@ -38,6 +38,11 @@ public static class DirectorWorldPlanningService
 
     public static void PaintZone(DirectorZoneType type, Vector3 center, float radius, float intensity)
     {
+        if (type != DirectorZoneType.Meadow && type != DirectorZoneType.Forest)
+        {
+            return;
+        }
+
         center = PlaceOnTerrain(center);
         PendingZones.Add(new DirectorPaintZone(type, center, Mathf.Max(8f, radius), Mathf.Clamp01(intensity)));
         CreatePaintMarker(type, center, radius);
@@ -161,6 +166,11 @@ public static class DirectorWorldPlanningService
 
     private static void ApplyZoneDetails(DirectorPaintZone zone)
     {
+        if (ResourceRuntimeBootstrap.IsWorldCleared)
+        {
+            return;
+        }
+
         Transform root = GetOrCreateAppliedRoot().transform;
         switch (zone.Type)
         {

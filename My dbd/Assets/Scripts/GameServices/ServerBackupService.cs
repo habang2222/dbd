@@ -14,6 +14,7 @@ public sealed class ServerBackupService : MonoBehaviour
     private const string LatestBackupFileName = "latest_server_backup.json";
     private const string BackupStatusFileName = "backup_status.json";
     private const string BackupCommandFileName = "backup_command.txt";
+    private const string MapPlanStatusFileName = "map_plan_status.json";
     private const string CleanShutdownKey = "DBD.ServerBackupCleanShutdown";
 
     private float nextBackupAt;
@@ -398,6 +399,11 @@ public sealed class ServerBackupService : MonoBehaviour
 
     private static void RestoreResources(List<ResourceBackupRecord> resources)
     {
+        if (ResourceRuntimeBootstrap.IsWorldCleared || IsMapClearPending())
+        {
+            return;
+        }
+
         if (resources == null)
         {
             return;
@@ -420,6 +426,27 @@ public sealed class ServerBackupService : MonoBehaviour
             {
                 resource.Configure(record.itemId, record.displayName, Mathf.Max(0.05f, record.gatherDuration), Mathf.Max(1, record.gatherAmount));
             }
+        }
+    }
+
+    private static bool IsMapClearPending()
+    {
+        try
+        {
+            string path = Path.Combine(Application.persistentDataPath, MapPlanStatusFileName);
+            if (!File.Exists(path))
+            {
+                return false;
+            }
+
+            string json = File.ReadAllText(path);
+            return json.Contains("\"pending_clear\"", StringComparison.Ordinal)
+                || json.Contains("\"cleared\"", StringComparison.Ordinal);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning("Map clear status read failed: " + exception.Message);
+            return false;
         }
     }
 

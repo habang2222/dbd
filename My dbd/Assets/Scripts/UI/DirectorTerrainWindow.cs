@@ -105,17 +105,13 @@ public class DirectorTerrainWindow : MonoBehaviour
 
         CreateButton(panel.transform, "들판 붓", new Vector2(18f, -130f), () => SelectBrush(DirectorIntentType.Meadow));
         CreateButton(panel.transform, "숲 붓", new Vector2(188f, -130f), () => SelectBrush(DirectorIntentType.Forest));
-        CreateButton(panel.transform, "산 붓", new Vector2(18f, -184f), () => SelectBrush(DirectorIntentType.Mountain));
-        CreateButton(panel.transform, "협곡 붓", new Vector2(188f, -184f), () => SelectBrush(DirectorIntentType.Canyon));
-        CreateButton(panel.transform, "강 붓", new Vector2(18f, -238f), () => SelectBrush(DirectorIntentType.River));
-        CreateButton(panel.transform, "습지 붓", new Vector2(188f, -238f), () => SelectBrush(DirectorIntentType.Wetland));
 
-        CreateButton(panel.transform, "붓 작게", new Vector2(18f, -306f), () => ChangeBrushSize(-20f));
-        CreateButton(panel.transform, "붓 크게", new Vector2(188f, -306f), () => ChangeBrushSize(20f));
-        CreateBrushSizeSlider(panel.transform, new Vector2(18f, -362f));
-        CreateButton(panel.transform, "Push 적용", new Vector2(18f, -430f), Push);
-        CreateButton(panel.transform, "Finish 완료", new Vector2(188f, -430f), Finish);
-        CreateButton(panel.transform, "대기 지우기", new Vector2(18f, -494f), ClearPending);
+        CreateButton(panel.transform, "붓 작게", new Vector2(18f, -220f), () => ChangeBrushSize(-20f));
+        CreateButton(panel.transform, "붓 크게", new Vector2(188f, -220f), () => ChangeBrushSize(20f));
+        CreateBrushSizeSlider(panel.transform, new Vector2(18f, -276f));
+        CreateButton(panel.transform, "Push 적용", new Vector2(18f, -344f), Push);
+        CreateButton(panel.transform, "Finish 완료", new Vector2(188f, -344f), Finish);
+        CreateButton(panel.transform, "대기 지우기", new Vector2(18f, -408f), ClearPending);
         Refresh();
     }
 
@@ -293,18 +289,12 @@ public class DirectorTerrainWindow : MonoBehaviour
     {
         switch (intent)
         {
+            case DirectorIntentType.Meadow:
+                return "들판";
             case DirectorIntentType.Forest:
                 return "숲";
-            case DirectorIntentType.Mountain:
-                return "산";
-            case DirectorIntentType.Canyon:
-                return "협곡";
-            case DirectorIntentType.River:
-                return "강";
-            case DirectorIntentType.Wetland:
-                return "습지";
             default:
-                return "들판";
+                return "비활성";
         }
     }
 
