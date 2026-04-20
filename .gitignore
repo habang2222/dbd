@@ -33,3 +33,10 @@ sysinfo.txt
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local generated project files
+*.slnx
+*.vsconfig
+
+# Local notes / captured Unity logs
+/My
