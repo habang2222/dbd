@@ -159,7 +159,7 @@ int main() {
     dbd_server::PerformDailyChunkMaintenance(world);
     std::cout << "Maintenance test complete. Persistent world state kept; resources/drops/corpses in opened chunks reset." << std::endl;
 
-    const auto save_root = std::filesystem::path("C:\\Users\\victo\\OneDrive\\Desktop\\dbd\\DBDReboot\\runtime-save");
+    const auto save_root = std::filesystem::current_path() / "runtime-save";
     const bool save_ok = dbd_server::SaveWorldState(world, save_root);
     std::cout << "Save test: " << (save_ok ? "world saved." : "save failed.") << std::endl;
 

@@ -2,6 +2,8 @@
 
 ## Product split
 
+`DBDReboot` is the canonical codebase for all three products below.
+
 The reboot must package three products independently:
 
 1. `dbd-client`

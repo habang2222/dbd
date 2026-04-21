@@ -23,3 +23,9 @@
 - continuous world with chunked persistence under the hood
 - building anywhere, with labor/time/terrain prep as the real constraint
 - flexible units with stat growth and permanent death
+
+## Active source of truth
+
+- `DBDReboot` is the only active implementation line
+- `My project` is kept only as historical reference material
+- new code, docs, saves, and release wiring should point to `DBDReboot`

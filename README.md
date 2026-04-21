@@ -2,8 +2,8 @@
 
 DBD reboot product line for a server-authoritative RTS/MMO sandbox.
 
-This folder is intentionally separate from the legacy Unity project in
-`My project`. The Unity codebase remains a reference/prototype source for:
+`DBDReboot` is now the active source of truth for the product line.
+The legacy Unity project in `My project` is archival reference only for:
 
 - control-room terrain editing ideas
 - map-plan concepts
@@ -32,8 +32,8 @@ The new product direction is:
 ## Current status
 
 This reboot line is a scaffold, not a finished game. It defines the first
-authoritative data model and protocol surface so implementation can begin
-without inheriting Unity-specific runtime assumptions.
+authoritative data model and protocol surface so implementation can continue
+from the reboot codebase instead of inheriting Unity runtime assumptions.
 
 Current scaffold focus:
 

@@ -30,3 +30,8 @@ Then it can become:
 - region modifier
 - anomaly spawner
 - seasonal balancing tool
+
+## Source wiring
+
+- control-room follow-up work should reference `DBDReboot`, not the legacy Unity project
+- legacy Unity files are design reference only and should not be treated as active runtime dependencies

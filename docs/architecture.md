@@ -69,10 +69,11 @@ The first vertical slice should prove:
 
 ## Migration stance
 
-The Unity project is not the product base. Reuse concept-level ideas only:
+`DBDReboot` is the product base. The Unity project is archival only.
+Reuse concept-level ideas only:
 
 - contour/map-plan editing ideas
 - control-room event concepts
 - update/ops lessons
 
-Do not port Unity runtime architecture directly.
+Do not treat the Unity runtime architecture as an active dependency.
