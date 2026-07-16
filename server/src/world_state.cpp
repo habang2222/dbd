@@ -5,14 +5,39 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <limits>
 #include <sstream>
+#include <string_view>
 
 namespace dbd_server {
 
 namespace {
 
-constexpr float kChunkSize = 64.0f;
+constexpr float kChunkSize = 50.0f;
+constexpr std::int32_t kExperimentalChunkMin = -1;
+constexpr std::int32_t kExperimentalChunkMax = 3;
+constexpr double kWorldDayLengthSeconds = 1'200.0;
+std::string g_last_world_state_diagnostic;
+
+std::filesystem::path TempOutputPath(const std::filesystem::path& output_path) {
+    auto temp_path = output_path;
+    temp_path += ".tmp";
+    return temp_path;
+}
+
+bool CommitTempOutputFile(const std::filesystem::path& temp_path, const std::filesystem::path& output_path) {
+    std::error_code ec;
+    std::filesystem::remove(output_path, ec);
+    ec.clear();
+    std::filesystem::rename(temp_path, output_path, ec);
+    if (ec) {
+        std::error_code remove_ec;
+        std::filesystem::remove(temp_path, remove_ec);
+        return false;
+    }
+    return true;
+}
 
 float DistanceSquared(const dbd::Vec3& a, const dbd::Vec3& b) {
     const float dx = a.x - b.x;
@@ -21,12 +46,100 @@ float DistanceSquared(const dbd::Vec3& a, const dbd::Vec3& b) {
     return dx * dx + dy * dy + dz * dz;
 }
 
+float RiverCenterZ(float x) {
+    return 72.0f + std::sin(x * 0.032f) * 14.0f;
+}
+
+float MountainRise(float x, float z, float center_x, float center_z, float peak, float radius) {
+    const float dx = x - center_x;
+    const float dz = z - center_z;
+    const float distance_sq = (dx * dx) + (dz * dz);
+    return peak * std::exp(-distance_sq / std::max(1.0f, radius * radius));
+}
+
 float PseudoTerrainHeight(float x, float z) {
-    return std::sin(x * 0.017f) * 8.0f + std::cos(z * 0.021f) * 6.0f + std::sin((x + z) * 0.011f) * 4.0f;
+    const float rolling = std::sin(x * 0.017f) * 3.5f + std::cos(z * 0.021f) * 2.8f;
+    const float mountain =
+        MountainRise(x, z, 124.0f, 128.0f, 26.0f, 58.0f) +
+        MountainRise(x, z, 38.0f, 148.0f, 18.0f, 42.0f);
+    const float river_distance = std::abs(z - RiverCenterZ(x));
+    const float river_cut = river_distance < 11.0f ? (11.0f - river_distance) * 0.72f : 0.0f;
+    return rolling + mountain - river_cut;
+}
+
+bool IsRiverTerrain(float x, float z) {
+    return std::abs(z - RiverCenterZ(x)) < 9.0f;
+}
+
+bool IsFlattenedTerrain(const WorldState& world, float x, float z) {
+    const dbd::Vec3 position {x, 0.0f, z};
+    const auto chunk_it = world.chunks.find(ChunkKey(WorldToChunk(position)));
+    if (chunk_it == world.chunks.end()) {
+        return false;
+    }
+    for (const auto& stamp : chunk_it->second.flatten_stamps) {
+        const float dx = x - stamp.center.x;
+        const float dz = z - stamp.center.z;
+        if ((dx * dx) + (dz * dz) <= stamp.radius * stamp.radius) {
+            return true;
+        }
+    }
+    return false;
 }
 
 float ClampPositive(float value) {
     return value < 0.0f ? 0.0f : value;
+}
+
+const char* RegionRiskBandName(dbd::RegionRiskBand band) {
+    switch (band) {
+        case dbd::RegionRiskBand::Low: return "Low";
+        case dbd::RegionRiskBand::Medium: return "Medium";
+        case dbd::RegionRiskBand::High: return "High";
+    }
+    return "Low";
+}
+
+const char* ItemCategoryName(dbd::ItemCategory category) {
+    switch (category) {
+        case dbd::ItemCategory::Resource: return "Resource";
+        case dbd::ItemCategory::ConstructionMaterial: return "ConstructionMaterial";
+        case dbd::ItemCategory::Tool: return "Tool";
+        case dbd::ItemCategory::Equipment: return "Equipment";
+    }
+    return "Resource";
+}
+
+std::uint32_t StableSnapshotTextCode(std::string_view value) {
+    if (value.empty()) {
+        return 0;
+    }
+    std::uint32_t hash = 2166136261u;
+    for (const unsigned char c : value) {
+        hash ^= c;
+        hash *= 16777619u;
+    }
+    return hash == 0 ? 1 : hash;
+}
+
+std::uint8_t RouteThreatCode(std::string_view value) {
+    if (value == "safe") {
+        return 0;
+    }
+    if (value == "threatened") {
+        return 1;
+    }
+    if (value == "critical") {
+        return 2;
+    }
+    return 3;
+}
+
+std::uint8_t TerrainKindCode(bool river, float raw_height) {
+    if (river) {
+        return 2;
+    }
+    return raw_height >= 13.0f ? 1 : 0;
 }
 
 std::string JoinCargo(const std::vector<dbd::CargoStack>& cargo) {
@@ -78,6 +191,61 @@ std::vector<dbd::CargoStack> ParseCargo(const std::string& value) {
     return cargo;
 }
 
+float CargoWeight(const std::vector<dbd::CargoStack>& cargo) {
+    float total = 0.0f;
+    for (const auto& stack : cargo) {
+        total += static_cast<float>(stack.amount) * stack.unit_weight;
+    }
+    return total;
+}
+
+float CargoValue(const std::vector<dbd::CargoStack>& cargo) {
+    float total = 0.0f;
+    for (const auto& stack : cargo) {
+        total += stack.value_basis;
+    }
+    return total;
+}
+
+const dbd::CargoStack* PrimaryCargoStack(const std::vector<dbd::CargoStack>& cargo) {
+    const dbd::CargoStack* best = nullptr;
+    for (const auto& stack : cargo) {
+        if (best == nullptr || stack.value_basis > best->value_basis) {
+            best = &stack;
+        }
+    }
+    return best;
+}
+
+std::uint32_t CargoAmountByItem(const std::vector<dbd::CargoStack>& cargo, dbd::Id item_id) {
+    std::uint32_t total = 0;
+    for (const auto& stack : cargo) {
+        if (stack.resource_id == item_id) {
+            total += stack.amount;
+        }
+    }
+    return total;
+}
+
+std::string CargoDisplayName(dbd::Id item_id) {
+    if (const auto* definition = dbd::FindItemDefinition(item_id); definition != nullptr && definition->display_name != nullptr) {
+        return definition->display_name;
+    }
+    return "Item #" + std::to_string(item_id);
+}
+
+dbd::Id ProducedItemIdForRiskBand(dbd::RegionRiskBand band) {
+    switch (band) {
+        case dbd::RegionRiskBand::Low:
+            return 91'001;
+        case dbd::RegionRiskBand::Medium:
+            return 91'002;
+        case dbd::RegionRiskBand::High:
+            return 91'003;
+    }
+    return 91'001;
+}
+
 std::string JoinAutomationRules(const std::vector<dbd::AutomationRule>& rules) {
     if (rules.empty()) {
         return "-";
@@ -91,6 +259,206 @@ std::string JoinAutomationRules(const std::vector<dbd::AutomationRule>& rules) {
             << rules[i].threshold << ',' << rules[i].enabled;
     }
     return out.str();
+}
+
+std::string JoinIdList(const std::vector<dbd::Id>& ids) {
+    if (ids.empty()) {
+        return "-";
+    }
+
+    std::ostringstream out;
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        if (i != 0) {
+            out << ';';
+        }
+        out << ids[i];
+    }
+    return out.str();
+}
+
+void WriteJsonIdArray(std::ostream& out, const std::vector<dbd::Id>& ids) {
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        if (i != 0) {
+            out << ", ";
+        }
+        out << ids[i];
+    }
+}
+
+std::vector<dbd::Id> ParseIdList(const std::string& value) {
+    std::vector<dbd::Id> ids;
+    if (value.empty() || value == "-") {
+        return ids;
+    }
+
+    std::stringstream stream(value);
+    std::string token;
+    while (std::getline(stream, token, ';')) {
+        if (!token.empty()) {
+            ids.push_back(static_cast<dbd::Id>(std::stoull(token)));
+        }
+    }
+    return ids;
+}
+
+std::string JsonEscape(const std::string& value) {
+    std::ostringstream out;
+    for (char ch : value) {
+        switch (ch) {
+            case '\\':
+                out << "\\\\";
+                break;
+            case '"':
+                out << "\\\"";
+                break;
+            case '\n':
+                out << "\\n";
+                break;
+            case '\r':
+                out << "\\r";
+                break;
+            case '\t':
+                out << "\\t";
+                break;
+            default:
+                out << ch;
+                break;
+        }
+    }
+    return out.str();
+}
+
+const char* OrderName(dbd::UnitOrderType order) {
+    switch (order) {
+        case dbd::UnitOrderType::Idle: return "Idle";
+        case dbd::UnitOrderType::Move: return "Move";
+        case dbd::UnitOrderType::Harvest: return "Harvest";
+        case dbd::UnitOrderType::HaulToStorage: return "HaulToStorage";
+        case dbd::UnitOrderType::Escort: return "Escort";
+        case dbd::UnitOrderType::AttackTarget: return "AttackTarget";
+        case dbd::UnitOrderType::FlattenSite: return "FlattenSite";
+        case dbd::UnitOrderType::BuildSite: return "BuildSite";
+        case dbd::UnitOrderType::Scout: return "Scout";
+        case dbd::UnitOrderType::Retreat: return "Retreat";
+        default: return "Unknown";
+    }
+}
+
+const char* StructureName(dbd::StructureType type) {
+    switch (type) {
+        case dbd::StructureType::StorageDepot: return "StorageDepot";
+        case dbd::StructureType::Extractor: return "Extractor";
+        case dbd::StructureType::DefenseNode: return "DefenseNode";
+        default: return "Unknown";
+    }
+}
+
+const char* ConstructionStageName(dbd::ConstructionStage stage) {
+    switch (stage) {
+        case dbd::ConstructionStage::Planned: return "Planned";
+        case dbd::ConstructionStage::WaitingForFlatten: return "WaitingForFlatten";
+        case dbd::ConstructionStage::UnderConstruction: return "UnderConstruction";
+        case dbd::ConstructionStage::Completed: return "Completed";
+        case dbd::ConstructionStage::Destroyed: return "Destroyed";
+        case dbd::ConstructionStage::Canceled: return "Canceled";
+        default: return "Unknown";
+    }
+}
+
+const char* FlattenStateName(dbd::FlattenJobStateKind state) {
+    switch (state) {
+        case dbd::FlattenJobStateKind::Planned: return "Planned";
+        case dbd::FlattenJobStateKind::InProgress: return "InProgress";
+        case dbd::FlattenJobStateKind::Completed: return "Completed";
+        case dbd::FlattenJobStateKind::Canceled: return "Canceled";
+        default: return "Unknown";
+    }
+}
+
+const char* HaulRouteSourceKindName(dbd::HaulRouteSourceKind kind) {
+    switch (kind) {
+        case dbd::HaulRouteSourceKind::ResourceNode: return "ResourceNode";
+        case dbd::HaulRouteSourceKind::DroppedCargo: return "DroppedCargo";
+        case dbd::HaulRouteSourceKind::None:
+        default: return "None";
+    }
+}
+
+const char* HaulRoutePhaseName(dbd::HaulRoutePhase phase) {
+    switch (phase) {
+        case dbd::HaulRoutePhase::ToSource: return "ToSource";
+        case dbd::HaulRoutePhase::Loading: return "Loading";
+        case dbd::HaulRoutePhase::ToStorage: return "ToStorage";
+        case dbd::HaulRoutePhase::Unloading: return "Unloading";
+        case dbd::HaulRoutePhase::Interrupted: return "Interrupted";
+        case dbd::HaulRoutePhase::None:
+        default: return "None";
+    }
+}
+
+const char* SquadStanceName(dbd::SquadStance stance) {
+    switch (stance) {
+        case dbd::SquadStance::Aggressive: return "Aggressive";
+        case dbd::SquadStance::Defensive: return "Defensive";
+        case dbd::SquadStance::Retreat: return "Retreat";
+        default: return "Unknown";
+    }
+}
+
+const char* CombatRangeBandName(dbd::CombatRangeBand band) {
+    switch (band) {
+        case dbd::CombatRangeBand::Short: return "Short";
+        case dbd::CombatRangeBand::Mid: return "Mid";
+        case dbd::CombatRangeBand::Long: return "Long";
+        default: return "Unknown";
+    }
+}
+
+const char* AttackTargetKindName(dbd::AttackTargetKind kind) {
+    switch (kind) {
+        case dbd::AttackTargetKind::Unit: return "Unit";
+        case dbd::AttackTargetKind::ConstructionSite: return "ConstructionSite";
+        case dbd::AttackTargetKind::Structure: return "Structure";
+        default: return "Unknown";
+    }
+}
+
+float VisionRangeFor(const dbd::UnitState& unit) {
+    return 14.0f + (unit.skills.survival_level * 0.75f);
+}
+
+const char* AutomationTriggerName(dbd::AutomationTrigger trigger) {
+    switch (trigger) {
+        case dbd::AutomationTrigger::LowHealth: return "LowHealth";
+        case dbd::AutomationTrigger::InventoryHeavy: return "InventoryHeavy";
+        case dbd::AutomationTrigger::InventoryFull: return "InventoryFull";
+        case dbd::AutomationTrigger::EnemySeen: return "EnemySeen";
+        default: return "Unknown";
+    }
+}
+
+const char* AutomationActionName(dbd::AutomationAction action) {
+    switch (action) {
+        case dbd::AutomationAction::Retreat: return "Retreat";
+        case dbd::AutomationAction::ReturnToStorage: return "ReturnToStorage";
+        case dbd::AutomationAction::HoldPosition: return "HoldPosition";
+        case dbd::AutomationAction::AttackNearestEnemy: return "AttackNearestEnemy";
+        default: return "Unknown";
+    }
+}
+
+void WriteAutomationRulesJson(std::ostream& out, const std::vector<dbd::AutomationRule>& rules) {
+    out << "[";
+    for (std::size_t i = 0; i < rules.size(); ++i) {
+        if (i != 0) {
+            out << ", ";
+        }
+        out << "{\"trigger\": \"" << AutomationTriggerName(rules[i].trigger)
+            << "\", \"action\": \"" << AutomationActionName(rules[i].action)
+            << "\", \"threshold\": " << rules[i].threshold
+            << ", \"enabled\": " << (rules[i].enabled ? "true" : "false") << "}";
+    }
+    out << "]";
 }
 
 std::vector<dbd::AutomationRule> ParseAutomationRules(const std::string& value) {
@@ -137,6 +505,13 @@ std::filesystem::path ChunkFilePath(const std::filesystem::path& root_dir, dbd::
     return root_dir / name.str();
 }
 
+bool IsChunkSaveFile(const std::filesystem::path& path) {
+    const auto filename = path.filename().string();
+    return filename.size() > 10 &&
+        filename.rfind("chunk_", 0) == 0 &&
+        path.extension() == ".txt";
+}
+
 dbd::BuildTimeClass DefaultTimeClassFor(dbd::StructureType structure_type) {
     switch (structure_type) {
         case dbd::StructureType::DefenseNode:
@@ -177,6 +552,10 @@ dbd::ChunkCoord WorldToChunk(const dbd::Vec3& position) {
         static_cast<std::int32_t>(std::floor(position.z / kChunkSize))};
 }
 
+float WorldChunkSize() {
+    return kChunkSize;
+}
+
 dbd::ChunkState& GetOrCreateChunk(WorldState& world, dbd::ChunkCoord coord) {
     const auto key = ChunkKey(coord);
     auto it = world.chunks.find(key);
@@ -195,11 +574,97 @@ dbd::ChunkState& GetOrCreateChunk(WorldState& world, dbd::ChunkCoord coord) {
     return world.chunks.emplace(key, chunk).first->second;
 }
 
+void InitializeExperimentalChunkGrid(WorldState& world) {
+    for (std::int32_t z = kExperimentalChunkMin; z <= kExperimentalChunkMax; ++z) {
+        for (std::int32_t x = kExperimentalChunkMin; x <= kExperimentalChunkMax; ++x) {
+            const dbd::ChunkCoord coord {x, z};
+            const auto key = ChunkKey(coord);
+            if (world.chunks.find(key) != world.chunks.end()) {
+                continue;
+            }
+            dbd::ChunkState chunk;
+            chunk.coord = coord;
+            chunk.loaded = false;
+            chunk.opened_today = false;
+            chunk.last_opened_utc_ms = world.now_utc_ms;
+            world.chunks.emplace(key, std::move(chunk));
+        }
+    }
+}
+
+void RefreshChunkStreaming(WorldState& world) {
+    InitializeExperimentalChunkGrid(world);
+    for (auto& [_, chunk] : world.chunks) {
+        chunk.loaded = false;
+    }
+
+    for (const auto& [_, unit] : world.units) {
+        if (!unit.alive || unit.permanently_dead) {
+            continue;
+        }
+        const auto center = WorldToChunk(unit.position);
+        for (std::int32_t dz = -1; dz <= 1; ++dz) {
+            for (std::int32_t dx = -1; dx <= 1; ++dx) {
+                const dbd::ChunkCoord neighbor {center.x + dx, center.z + dz};
+                const auto key = ChunkKey(neighbor);
+                const auto it = world.chunks.find(key);
+                if (it == world.chunks.end()) {
+                    continue;
+                }
+                it->second.loaded = true;
+                it->second.opened_today = true;
+                it->second.last_opened_utc_ms = world.now_utc_ms;
+            }
+        }
+    }
+}
+
+void MarkUnitSpatialIndexDirty(WorldState& world) {
+    world.unit_spatial_index_dirty = true;
+}
+
+void RefreshUnitSpatialIndex(WorldState& world) {
+    if (!world.unit_spatial_index_dirty) {
+        return;
+    }
+
+    world.unit_spatial_chunks.clear();
+    world.unit_spatial_chunks.reserve(world.units.size());
+    for (const auto& [unit_id, unit] : world.units) {
+        if (!unit.alive || unit.permanently_dead) {
+            continue;
+        }
+        world.unit_spatial_chunks[ChunkKey(WorldToChunk(unit.position))].push_back(unit_id);
+    }
+    world.unit_spatial_index_dirty = false;
+}
+
+std::vector<dbd::Id> FindNearbyUnitIds(WorldState& world, const dbd::Vec3& center, float radius) {
+    RefreshUnitSpatialIndex(world);
+
+    const float clamped_radius = std::max(0.0f, radius);
+    const std::int32_t chunk_radius = static_cast<std::int32_t>(std::ceil(clamped_radius / kChunkSize));
+    const dbd::ChunkCoord center_chunk = WorldToChunk(center);
+
+    std::vector<dbd::Id> nearby;
+    for (std::int32_t dz = -chunk_radius; dz <= chunk_radius; ++dz) {
+        for (std::int32_t dx = -chunk_radius; dx <= chunk_radius; ++dx) {
+            const auto bucket_it = world.unit_spatial_chunks.find(ChunkKey({center_chunk.x + dx, center_chunk.z + dz}));
+            if (bucket_it == world.unit_spatial_chunks.end()) {
+                continue;
+            }
+            nearby.insert(nearby.end(), bucket_it->second.begin(), bucket_it->second.end());
+        }
+    }
+    return nearby;
+}
+
 dbd::PlayerState& CreatePlayer(WorldState& world, const std::string& display_name) {
     dbd::PlayerState player;
     player.player_id = AllocateId(world);
     player.display_name = display_name;
     player.credits = 1'000.0f;
+    player.efficiency = 1.0f;
     return world.players.emplace(player.player_id, std::move(player)).first->second;
 }
 
@@ -270,6 +735,7 @@ dbd::UnitState& CreateUnit(
         world.squads[squad_id].leader_unit_id = created.unit_id;
     }
     GetOrCreateChunk(world, WorldToChunk(position));
+    MarkUnitSpatialIndexDirty(world);
     return created;
 }
 
@@ -555,15 +1021,34 @@ void PerformDailyChunkMaintenance(WorldState& world) {
 }
 
 bool SaveWorldState(const WorldState& world, const std::filesystem::path& root_dir) {
+    g_last_world_state_diagnostic.clear();
     std::error_code ec;
     std::filesystem::create_directories(root_dir, ec);
     if (ec) {
+        g_last_world_state_diagnostic = "Failed to create save directory: " + root_dir.string();
         return false;
+    }
+
+    for (const auto& entry : std::filesystem::directory_iterator(root_dir, ec)) {
+        if (ec) {
+            g_last_world_state_diagnostic = "Failed to enumerate save directory: " + root_dir.string();
+            return false;
+        }
+        if (!entry.is_regular_file() || !IsChunkSaveFile(entry.path())) {
+            continue;
+        }
+
+        std::filesystem::remove(entry.path(), ec);
+        if (ec) {
+            g_last_world_state_diagnostic = "Failed to clear stale chunk save file: " + entry.path().string();
+            return false;
+        }
     }
 
     for (const auto& [_, chunk] : world.chunks) {
         std::ofstream out(ChunkFilePath(root_dir, chunk.coord), std::ios::trunc);
         if (!out.is_open()) {
+            g_last_world_state_diagnostic = "Failed to open chunk save file for writing.";
             return false;
         }
 
@@ -572,6 +1057,20 @@ bool SaveWorldState(const WorldState& world, const std::filesystem::path& root_d
             out << "FLATTEN "
                 << stamp.center.x << ' ' << stamp.center.y << ' ' << stamp.center.z << ' '
                 << stamp.radius << ' ' << stamp.applied_grade << '\n';
+        }
+
+        for (const auto& [id, job] : world.flatten_jobs) {
+            if (job.chunk.x != chunk.coord.x || job.chunk.z != chunk.coord.z) {
+                continue;
+            }
+            out << "JOB "
+                << id << ' '
+                << job.center.x << ' ' << job.center.y << ' ' << job.center.z << ' '
+                << job.radius << ' ' << job.target_grade << ' '
+                << job.required_labor << ' ' << job.accumulated_labor << ' '
+                << job.initial_slope << ' ' << job.current_slope << ' '
+                << static_cast<int>(job.state) << ' '
+                << JoinIdList(job.assigned_unit_ids) << '\n';
         }
 
         for (const auto& [id, site] : world.construction_sites) {
@@ -585,7 +1084,9 @@ bool SaveWorldState(const WorldState& world, const std::filesystem::path& root_d
                 << site.footprint_radius << ' ' << site.allowed_slope << ' '
                 << site.required_labor << ' ' << site.accumulated_labor << ' '
                 << site.flatten_job_id << ' ' << site.flattening_required << ' '
-                << static_cast<int>(site.stage) << ' ' << site.health << ' ' << site.max_health << '\n';
+                << static_cast<int>(site.stage) << ' ' << site.health << ' ' << site.max_health << ' '
+                << site.completion_health_ratio << ' '
+                << JoinIdList(site.assigned_unit_ids) << '\n';
         }
 
         for (const auto& [id, structure] : world.structures) {
@@ -641,15 +1142,17 @@ bool SaveWorldState(const WorldState& world, const std::filesystem::path& root_d
 
     std::ofstream meta(root_dir / "world_meta.txt", std::ios::trunc);
     if (!meta.is_open()) {
+        g_last_world_state_diagnostic = "Failed to open world_meta.txt for writing.";
         return false;
     }
     meta << world.tick << '\n' << world.now_utc_ms << '\n' << world.next_id << '\n';
     for (const auto& [id, player] : world.players) {
         meta << "PLAYER "
              << id << ' ' << std::quoted(player.display_name) << ' ' << player.credits << ' '
-             << player.tax_load << ' ' << player.upkeep_load << ' '
+             << player.tax_load << ' ' << player.upkeep_load << ' ' << player.credit_load << ' '
              << player.complexity_load << ' ' << player.food_load << ' '
-             << player.food_shortage_ratio << ' ' << player.upkeep_shortage_ratio << '\n';
+             << player.food_shortage_ratio << ' ' << player.upkeep_shortage_ratio << ' '
+             << player.shortage_ratio << ' ' << player.efficiency << ' ' << player.pressure_ratio << '\n';
     }
     for (const auto& [id, lineage] : world.lineages) {
         meta << "LINEAGE "
@@ -679,8 +1182,11 @@ bool SaveWorldState(const WorldState& world, const std::filesystem::path& root_d
 }
 
 bool LoadWorldState(WorldState& world, const std::filesystem::path& root_dir) {
+    g_last_world_state_diagnostic.clear();
     world = WorldState {};
+    std::error_code ec;
     if (!std::filesystem::exists(root_dir)) {
+        g_last_world_state_diagnostic = "Save root does not exist: " + root_dir.string();
         return false;
     }
 
@@ -688,6 +1194,7 @@ bool LoadWorldState(WorldState& world, const std::filesystem::path& root_dir) {
     if (std::filesystem::exists(meta_path)) {
         std::ifstream meta(meta_path);
         if (!meta.is_open()) {
+            g_last_world_state_diagnostic = "world_meta.txt exists but could not be opened.";
             return false;
         }
         meta >> world.tick;
@@ -697,9 +1204,25 @@ bool LoadWorldState(WorldState& world, const std::filesystem::path& root_dir) {
         while (meta >> kind) {
             if (kind == "PLAYER") {
                 dbd::PlayerState player;
-                meta >> player.player_id >> std::quoted(player.display_name) >> player.credits
-                    >> player.tax_load >> player.upkeep_load >> player.complexity_load >> player.food_load
-                    >> player.food_shortage_ratio >> player.upkeep_shortage_ratio;
+                std::string player_line;
+                std::getline(meta >> std::ws, player_line);
+                std::istringstream player_stream(player_line);
+                player_stream >> player.player_id >> std::quoted(player.display_name) >> player.credits
+                    >> player.tax_load >> player.upkeep_load;
+                if (!(player_stream >> player.credit_load >> player.complexity_load >> player.food_load
+                        >> player.food_shortage_ratio >> player.upkeep_shortage_ratio
+                        >> player.shortage_ratio >> player.efficiency >> player.pressure_ratio)) {
+                    player_stream.clear();
+                    player_stream.str(player_line);
+                    player_stream >> player.player_id >> std::quoted(player.display_name) >> player.credits
+                        >> player.tax_load >> player.upkeep_load >> player.complexity_load >> player.food_load
+                        >> player.food_shortage_ratio >> player.upkeep_shortage_ratio;
+                    player.credit_load = player.tax_load + player.upkeep_load;
+                    player.shortage_ratio = std::max(player.food_shortage_ratio, player.upkeep_shortage_ratio);
+                    const float labor_penalty = (player.food_shortage_ratio * 0.35f) + (player.upkeep_shortage_ratio * 0.30f);
+                    player.efficiency = std::max(0.45f, 1.0f - labor_penalty);
+                    player.pressure_ratio = 1.0f - player.efficiency;
+                }
                 world.players.emplace(player.player_id, player);
             } else if (kind == "LINEAGE") {
                 dbd::LineageState lineage;
@@ -731,16 +1254,21 @@ bool LoadWorldState(WorldState& world, const std::filesystem::path& root_dir) {
         }
     }
 
-    for (const auto& entry : std::filesystem::directory_iterator(root_dir)) {
+    for (const auto& entry : std::filesystem::directory_iterator(root_dir, ec)) {
+        if (ec) {
+            g_last_world_state_diagnostic = "Failed to enumerate save directory: " + root_dir.string();
+            return false;
+        }
         if (!entry.is_regular_file()) {
             continue;
         }
-        if (entry.path().filename() == "world_meta.txt") {
+        if (!IsChunkSaveFile(entry.path())) {
             continue;
         }
 
         std::ifstream in(entry.path());
         if (!in.is_open()) {
+            g_last_world_state_diagnostic = "Failed to open chunk file: " + entry.path().string();
             return false;
         }
 
@@ -756,21 +1284,38 @@ bool LoadWorldState(WorldState& world, const std::filesystem::path& root_dir) {
                 dbd::TerrainFlattenStamp stamp;
                 in >> stamp.center.x >> stamp.center.y >> stamp.center.z >> stamp.radius >> stamp.applied_grade;
                 GetOrCreateChunk(world, chunk_coord).flatten_stamps.push_back(stamp);
+            } else if (kind == "JOB") {
+                dbd::FlattenJobState job;
+                int state = 0;
+                std::string assigned_ids_text;
+                in >> job.flatten_job_id
+                    >> job.center.x >> job.center.y >> job.center.z
+                    >> job.radius >> job.target_grade
+                    >> job.required_labor >> job.accumulated_labor
+                    >> job.initial_slope >> job.current_slope
+                    >> state >> assigned_ids_text;
+                job.state = static_cast<dbd::FlattenJobStateKind>(state);
+                job.chunk = chunk_coord;
+                job.assigned_unit_ids = ParseIdList(assigned_ids_text);
+                world.flatten_jobs.emplace(job.flatten_job_id, job);
             } else if (kind == "SITE") {
                 dbd::ConstructionSiteState site;
                 int structure_type = 0;
                 int time_class = 0;
                 int stage = 0;
+                std::string assigned_ids_text;
                 in >> site.construction_site_id >> site.owner_player_id >> structure_type >> time_class
                     >> site.position.x >> site.position.y >> site.position.z
                     >> site.footprint_radius >> site.allowed_slope
                     >> site.required_labor >> site.accumulated_labor
                     >> site.flatten_job_id >> site.flattening_required
-                    >> stage >> site.health >> site.max_health;
+                    >> stage >> site.health >> site.max_health >> site.completion_health_ratio
+                    >> assigned_ids_text;
                 site.structure_type = static_cast<dbd::StructureType>(structure_type);
                 site.time_class = static_cast<dbd::BuildTimeClass>(time_class);
                 site.stage = static_cast<dbd::ConstructionStage>(stage);
                 site.chunk = chunk_coord;
+                site.assigned_unit_ids = ParseIdList(assigned_ids_text);
                 world.construction_sites.emplace(site.construction_site_id, site);
             } else if (kind == "STRUCT") {
                 dbd::StructureState structure;
@@ -847,27 +1392,64 @@ bool LoadWorldState(WorldState& world, const std::filesystem::path& root_dir) {
 
     for (const auto& [_, unit] : world.units) {
         if (world.players.find(unit.owner_player_id) == world.players.end()) {
+            g_last_world_state_diagnostic = "Loaded unit references missing owner player.";
+            std::cerr << "Load diagnostic: " << g_last_world_state_diagnostic << std::endl;
             return false;
         }
         if (unit.squad_id != 0 && world.squads.find(unit.squad_id) == world.squads.end()) {
+            g_last_world_state_diagnostic = "Loaded unit references missing squad.";
+            std::cerr << "Load diagnostic: " << g_last_world_state_diagnostic << std::endl;
             return false;
         }
         if (world.lineages.find(unit.lineage.lineage_id) == world.lineages.end()) {
+            g_last_world_state_diagnostic = "Loaded unit references missing lineage.";
+            std::cerr << "Load diagnostic: " << g_last_world_state_diagnostic << std::endl;
             return false;
+        }
+    }
+
+    for (const auto& [_, job] : world.flatten_jobs) {
+        for (dbd::Id unit_id : job.assigned_unit_ids) {
+            if (world.units.find(unit_id) == world.units.end()) {
+                g_last_world_state_diagnostic = "Flatten job references missing assigned unit.";
+                std::cerr << "Load diagnostic: " << g_last_world_state_diagnostic << std::endl;
+                return false;
+            }
+        }
+    }
+
+    for (const auto& [_, site] : world.construction_sites) {
+        if (site.flatten_job_id != 0 && world.flatten_jobs.find(site.flatten_job_id) == world.flatten_jobs.end()) {
+            g_last_world_state_diagnostic = "Construction site references missing flatten job.";
+            std::cerr << "Load diagnostic: " << g_last_world_state_diagnostic << std::endl;
+            return false;
+        }
+        for (dbd::Id unit_id : site.assigned_unit_ids) {
+            if (world.units.find(unit_id) == world.units.end()) {
+                g_last_world_state_diagnostic = "Construction site references missing assigned unit.";
+                std::cerr << "Load diagnostic: " << g_last_world_state_diagnostic << std::endl;
+                return false;
+            }
         }
     }
 
     for (const auto& [_, structure] : world.structures) {
         if (world.players.find(structure.owner_player_id) == world.players.end()) {
+            g_last_world_state_diagnostic = "Loaded structure references missing owner player.";
+            std::cerr << "Load diagnostic: " << g_last_world_state_diagnostic << std::endl;
             return false;
         }
     }
 
     for (const auto& [_, storage] : world.storage_sites) {
         if (world.structures.find(storage.structure_id) == world.structures.end()) {
+            g_last_world_state_diagnostic = "Loaded storage references missing structure.";
+            std::cerr << "Load diagnostic: " << g_last_world_state_diagnostic << std::endl;
             return false;
         }
         if (world.players.find(storage.owner_player_id) == world.players.end()) {
+            g_last_world_state_diagnostic = "Loaded storage references missing owner player.";
+            std::cerr << "Load diagnostic: " << g_last_world_state_diagnostic << std::endl;
             return false;
         }
     }
@@ -875,19 +1457,414 @@ bool LoadWorldState(WorldState& world, const std::filesystem::path& root_dir) {
     for (const auto& [_, authority] : world.authorities) {
         if (world.players.find(authority.grantor_player_id) == world.players.end() ||
             world.players.find(authority.grantee_player_id) == world.players.end()) {
+            g_last_world_state_diagnostic = "Loaded authority references missing player.";
+            std::cerr << "Load diagnostic: " << g_last_world_state_diagnostic << std::endl;
             return false;
         }
     }
 
     for (const auto& [_, policy] : world.insurance_policies) {
+        if (!policy.active) {
+            continue;
+        }
         const bool has_unit = world.units.find(policy.insured_entity_id) != world.units.end();
         const bool has_structure = world.structures.find(policy.insured_entity_id) != world.structures.end();
         if (!has_unit && !has_structure) {
+            g_last_world_state_diagnostic = "Loaded insurance policy references missing insured entity.";
+            std::cerr << "Load diagnostic: " << g_last_world_state_diagnostic << std::endl;
             return false;
         }
     }
 
+    MarkUnitSpatialIndexDirty(world);
     return true;
+}
+
+bool ExportWorldSnapshotJson(const WorldState& world, const std::filesystem::path& output_path) {
+    std::error_code ec;
+    if (output_path.has_parent_path()) {
+        std::filesystem::create_directories(output_path.parent_path(), ec);
+        if (ec) {
+            return false;
+        }
+    }
+
+    const auto temp_path = TempOutputPath(output_path);
+    std::ofstream out(temp_path, std::ios::trunc);
+    if (!out.is_open()) {
+        return false;
+    }
+
+    out << "{\n";
+    const double world_time_seconds = static_cast<double>(world.now_utc_ms) / 1000.0;
+    const double wrapped_day_seconds = std::fmod(world_time_seconds, kWorldDayLengthSeconds);
+    const double day_fraction = wrapped_day_seconds < 0.0
+        ? (wrapped_day_seconds + kWorldDayLengthSeconds) / kWorldDayLengthSeconds
+        : wrapped_day_seconds / kWorldDayLengthSeconds;
+    const double solar_curve = 0.5 + 0.5 * std::sin((day_fraction - 0.25) * 6.283185307179586);
+    const double night_factor = std::clamp(1.0 - solar_curve, 0.0, 1.0);
+
+    out << "  \"tick\": " << world.tick << ",\n";
+    out << "  \"nowUtcMs\": " << world.now_utc_ms << ",\n";
+    out << "  \"worldTimeSeconds\": " << world_time_seconds << ",\n";
+    out << "  \"dayLengthSeconds\": " << kWorldDayLengthSeconds << ",\n";
+    out << "  \"dayFraction\": " << day_fraction << ",\n";
+    out << "  \"nightFactor\": " << night_factor << ",\n";
+    out << "  \"itemDefinitions\": [\n";
+    bool first_item_definition = true;
+    for (const auto& item : dbd::GetDefaultItemDefinitions()) {
+        if (!first_item_definition) {
+            out << ",\n";
+        }
+        first_item_definition = false;
+        out << "    {\"itemId\": " << item.item_id
+            << ", \"displayName\": \"" << JsonEscape(item.display_name == nullptr ? "" : item.display_name) << "\""
+            << ", \"category\": \"" << ItemCategoryName(item.category) << "\""
+            << ", \"categoryCode\": " << static_cast<int>(item.category)
+            << ", \"unitWeight\": " << item.unit_weight
+            << ", \"baseValue\": " << item.base_value
+            << ", \"stackable\": " << (item.stackable ? "true" : "false")
+            << ", \"maxStack\": " << item.max_stack
+            << "}";
+    }
+    out << "\n  ],\n";
+    out << "  \"chunks\": [\n";
+    bool first_chunk = true;
+    for (const auto& [_, chunk] : world.chunks) {
+        if (!first_chunk) {
+            out << ",\n";
+        }
+        first_chunk = false;
+        const float min_x = static_cast<float>(chunk.coord.x) * kChunkSize;
+        const float min_z = static_cast<float>(chunk.coord.z) * kChunkSize;
+        out << "    {\"x\": " << chunk.coord.x
+            << ", \"z\": " << chunk.coord.z
+            << ", \"loaded\": " << (chunk.loaded ? "true" : "false")
+            << ", \"min\": {\"x\": " << min_x << ", \"y\": 0, \"z\": " << min_z << "}"
+            << ", \"max\": {\"x\": " << (min_x + kChunkSize) << ", \"y\": 0, \"z\": " << (min_z + kChunkSize) << "}"
+            << "}";
+    }
+    out << "\n  ],\n";
+    out << "  \"terrainTiles\": [\n";
+    bool first_tile = true;
+    constexpr int kTerrainTileGrid = 12;
+    const float terrain_tile_size = kChunkSize / static_cast<float>(kTerrainTileGrid);
+    for (const auto& [_, chunk] : world.chunks) {
+        if (!chunk.loaded) {
+            continue;
+        }
+        const float chunk_min_x = static_cast<float>(chunk.coord.x) * kChunkSize;
+        const float chunk_min_z = static_cast<float>(chunk.coord.z) * kChunkSize;
+        for (int tile_z = 0; tile_z < kTerrainTileGrid; ++tile_z) {
+            for (int tile_x = 0; tile_x < kTerrainTileGrid; ++tile_x) {
+                const float center_x = chunk_min_x + (static_cast<float>(tile_x) + 0.5f) * terrain_tile_size;
+                const float center_z = chunk_min_z + (static_cast<float>(tile_z) + 0.5f) * terrain_tile_size;
+                const bool flattened = IsFlattenedTerrain(world, center_x, center_z);
+                const bool river = IsRiverTerrain(center_x, center_z);
+                const float raw_height = PseudoTerrainHeight(center_x, center_z);
+                const float rendered_height = flattened ? std::min(raw_height, 1.0f) : raw_height;
+                const char* terrain_kind = river ? "River" : (raw_height >= 13.0f ? "Mountain" : "Ground");
+                if (!first_tile) {
+                    out << ",\n";
+                }
+                first_tile = false;
+                out << "    {\"center\": {\"x\": " << center_x << ", \"y\": 0, \"z\": " << center_z << "}"
+                    << ", \"size\": " << terrain_tile_size
+                    << ", \"height\": " << rendered_height
+                    << ", \"terrainKind\": \"" << terrain_kind << "\""
+                    << ", \"terrainKindCode\": " << static_cast<int>(TerrainKindCode(river, raw_height))
+                    << ", \"flattened\": " << (flattened ? "true" : "false")
+                    << ", \"chunkX\": " << chunk.coord.x
+                    << ", \"chunkZ\": " << chunk.coord.z
+                    << "}";
+            }
+        }
+    }
+    out << "\n  ],\n";
+    out << "  \"players\": [\n";
+    bool first_player = true;
+    for (const auto& [id, player] : world.players) {
+        if (!first_player) {
+            out << ",\n";
+        }
+        first_player = false;
+        out << "    {\"playerId\": " << id
+            << ", \"name\": \"" << JsonEscape(player.display_name)
+            << "\", \"credits\": " << player.credits
+            << ", \"upkeepLoad\": " << player.upkeep_load
+            << ", \"taxLoad\": " << player.tax_load
+            << ", \"creditLoad\": " << player.credit_load
+            << ", \"complexityLoad\": " << player.complexity_load
+            << ", \"foodLoad\": " << player.food_load
+            << ", \"foodShortage\": " << player.food_shortage_ratio
+            << ", \"upkeepShortage\": " << player.upkeep_shortage_ratio
+            << ", \"shortageRatio\": " << player.shortage_ratio
+            << ", \"efficiency\": " << player.efficiency
+            << ", \"pressureRatio\": " << player.pressure_ratio
+            << "}";
+    }
+    out << "\n  ],\n";
+
+    out << "  \"storageSites\": [\n";
+    bool first_storage = true;
+    for (const auto& [id, storage] : world.storage_sites) {
+        if (!first_storage) {
+            out << ",\n";
+        }
+        first_storage = false;
+        const auto* primary_stack = PrimaryCargoStack(storage.stored_resources);
+        const dbd::Id primary_item_id = primary_stack == nullptr ? 0 : primary_stack->resource_id;
+        out << "    {\"storageSiteId\": " << id
+            << ", \"ownerPlayerId\": " << storage.owner_player_id
+            << ", \"structureId\": " << storage.structure_id
+            << ", \"storedStackCount\": " << storage.stored_resources.size()
+            << ", \"primaryItemId\": " << primary_item_id
+            << ", \"primaryItemName\": \"" << JsonEscape(primary_item_id == 0 ? "Empty" : CargoDisplayName(primary_item_id)) << "\""
+            << ", \"basicWoodAmount\": " << CargoAmountByItem(storage.stored_resources, 91'001)
+            << ", \"stoneBlockAmount\": " << CargoAmountByItem(storage.stored_resources, 91'002)
+            << ", \"ironFittingAmount\": " << CargoAmountByItem(storage.stored_resources, 91'003)
+            << ", \"repairMaterialAmount\": " << CargoAmountByItem(storage.stored_resources, 91'004)
+            << ", \"fieldShovelAmount\": " << CargoAmountByItem(storage.stored_resources, 92'001)
+            << ", \"surveyMarkerAmount\": " << CargoAmountByItem(storage.stored_resources, 92'004)
+            << ", \"storageCrateAmount\": " << CargoAmountByItem(storage.stored_resources, 92'005)
+            << ", \"fieldHammerAmount\": " << CargoAmountByItem(storage.stored_resources, 92'006)
+            << ", \"position\": {\"x\": " << storage.position.x << ", \"y\": " << storage.position.y << ", \"z\": " << storage.position.z << "}"
+            << "}";
+    }
+    out << "\n  ],\n";
+
+    out << "  \"squads\": [\n";
+    bool first_squad = true;
+    for (const auto& [id, squad] : world.squads) {
+        if (!first_squad) {
+            out << ",\n";
+        }
+        first_squad = false;
+        out << "    {\"squadId\": " << id
+            << ", \"ownerPlayerId\": " << squad.owner_player_id
+            << ", \"commanderPlayerId\": " << squad.commander_player_id
+            << ", \"leaderUnitId\": " << squad.leader_unit_id
+            << ", \"name\": \"" << JsonEscape(squad.name) << "\""
+            << ", \"stance\": \"" << SquadStanceName(squad.stance) << "\""
+            << ", \"stanceCode\": " << static_cast<int>(squad.stance)
+            << ", \"unitIds\": [";
+        WriteJsonIdArray(out, squad.unit_ids);
+        out << "]"
+            << ", \"automationRules\": ";
+        WriteAutomationRulesJson(out, squad.automation_rules);
+        out << "}";
+    }
+    out << "\n  ],\n";
+
+    out << "  \"units\": [\n";
+    bool first_unit = true;
+    for (const auto& [id, unit] : world.units) {
+        if (!first_unit) {
+            out << ",\n";
+        }
+        first_unit = false;
+        const bool has_queued_order = !unit.queued_orders.empty();
+        const dbd::Vec3 next_queued_target = has_queued_order ? unit.queued_orders.front().move_target : dbd::Vec3 {};
+        const auto* primary_stack = PrimaryCargoStack(unit.cargo);
+        const dbd::Id primary_item_id = primary_stack == nullptr ? 0 : primary_stack->resource_id;
+        out << "    {\"unitId\": " << id
+            << ", \"ownerPlayerId\": " << unit.owner_player_id
+            << ", \"controllerPlayerId\": " << unit.controller_player_id
+            << ", \"squadId\": " << unit.squad_id
+            << ", \"alive\": " << (unit.alive ? "true" : "false")
+            << ", \"permanentlyDead\": " << (unit.permanently_dead ? "true" : "false")
+            << ", \"order\": \"" << OrderName(unit.current_order) << "\""
+            << ", \"orderCode\": " << static_cast<int>(unit.current_order)
+            << ", \"combatBand\": \"" << CombatRangeBandName(unit.combat_band) << "\""
+            << ", \"combatBandCode\": " << static_cast<int>(unit.combat_band)
+            << ", \"assignmentKind\": " << static_cast<int>(unit.assignment.kind)
+            << ", \"assignmentTargetEntityId\": " << unit.assignment.target_entity_id
+            << ", \"assignmentRadius\": " << unit.assignment.radius
+            << ", \"assignmentPatrolRoute\": " << (unit.assignment.patrol_route ? "true" : "false")
+            << ", \"queuedOrderCount\": " << unit.queued_orders.size()
+            << ", \"nextQueuedOrder\": \"" << (has_queued_order ? OrderName(unit.queued_orders.front().order_type) : "None") << "\""
+            << ", \"nextQueuedOrderCode\": " << (has_queued_order ? static_cast<int>(unit.queued_orders.front().order_type) : -1)
+            << ", \"tacticalState\": \"" << JsonEscape(unit.tactical_state) << "\""
+            << ", \"tacticalStateCode\": " << StableSnapshotTextCode(unit.tactical_state)
+            << ", \"queueInterruptReason\": \"" << JsonEscape(unit.queue_interrupt_reason) << "\""
+            << ", \"queueInterruptReasonCode\": " << StableSnapshotTextCode(unit.queue_interrupt_reason)
+            << ", \"routeActive\": " << (unit.assignment.route_active ? "true" : "false")
+            << ", \"routeSourceKind\": \"" << HaulRouteSourceKindName(unit.assignment.route_source_kind) << "\""
+            << ", \"routeSourceKindCode\": " << static_cast<int>(unit.assignment.route_source_kind)
+            << ", \"routeSourceId\": " << unit.assignment.route_source_id
+            << ", \"routeStorageId\": " << unit.assignment.route_storage_id
+            << ", \"routePhase\": \"" << HaulRoutePhaseName(unit.assignment.route_phase) << "\""
+            << ", \"routePhaseCode\": " << static_cast<int>(unit.assignment.route_phase)
+            << ", \"routeThreatLevel\": \"" << JsonEscape(unit.route_threat_level) << "\""
+            << ", \"routeThreatCode\": " << static_cast<int>(RouteThreatCode(unit.route_threat_level))
+            << ", \"routeThreatEnemyId\": " << unit.route_threat_enemy_id
+            << ", \"health\": " << unit.health
+            << ", \"maxHealth\": " << unit.max_health
+            << ", \"stamina\": " << unit.stamina
+            << ", \"maxStamina\": " << unit.max_stamina
+            << ", \"cargoWeight\": " << CargoWeight(unit.cargo)
+            << ", \"carryCapacity\": " << unit.carry_capacity
+            << ", \"visionRange\": " << VisionRangeFor(unit)
+            << ", \"cargoStacks\": " << unit.cargo.size()
+            << ", \"cargoPrimaryItemId\": " << primary_item_id
+            << ", \"cargoPrimaryItemName\": \"" << JsonEscape(primary_item_id == 0 ? "Empty" : CargoDisplayName(primary_item_id)) << "\""
+            << ", \"automationRules\": ";
+        WriteAutomationRulesJson(out, unit.automation_rules);
+        out
+            << ", \"position\": {\"x\": " << unit.position.x << ", \"y\": " << unit.position.y << ", \"z\": " << unit.position.z << "}"
+            << ", \"moveTarget\": {\"x\": " << unit.move_target.x << ", \"y\": " << unit.move_target.y << ", \"z\": " << unit.move_target.z << "}"
+            << ", \"nextQueuedTarget\": {\"x\": " << next_queued_target.x << ", \"y\": " << next_queued_target.y << ", \"z\": " << next_queued_target.z << "}"
+            << ", \"assignmentTargetPosition\": {\"x\": " << unit.assignment.target_position.x << ", \"y\": " << unit.assignment.target_position.y << ", \"z\": " << unit.assignment.target_position.z << "}"
+            << ", \"assignmentSecondaryPosition\": {\"x\": " << unit.assignment.secondary_position.x << ", \"y\": " << unit.assignment.secondary_position.y << ", \"z\": " << unit.assignment.secondary_position.z << "}"
+            << "}";
+    }
+    out << "\n  ],\n";
+
+    out << "  \"knownContacts\": [\n";
+    bool first_contact = true;
+    for (const auto& [observing_player_id, contacts] : world.known_contacts) {
+        for (const auto& [_, contact] : contacts) {
+            if (!first_contact) {
+                out << ",\n";
+            }
+            first_contact = false;
+            const char* freshness = contact.currently_visible ? "visible" : "stale";
+            out << "    {\"observingPlayerId\": " << observing_player_id
+                << ", \"targetEntityId\": " << contact.target_entity_id
+                << ", \"targetKind\": \"" << AttackTargetKindName(contact.target_kind) << "\""
+                << ", \"targetKindCode\": " << static_cast<int>(contact.target_kind)
+                << ", \"lastSeenTick\": " << contact.last_seen_tick
+                << ", \"spottedByUnitId\": " << contact.spotted_by_unit_id
+                << ", \"freshness\": \"" << freshness << "\""
+                << ", \"position\": {\"x\": " << contact.position.x << ", \"y\": " << contact.position.y << ", \"z\": " << contact.position.z << "}"
+                << "}";
+        }
+    }
+    out << "\n  ],\n";
+
+    out << "  \"flattenJobs\": [\n";
+    bool first_job = true;
+    for (const auto& [id, job] : world.flatten_jobs) {
+        if (!first_job) {
+            out << ",\n";
+        }
+        first_job = false;
+        out << "    {\"flattenJobId\": " << id
+            << ", \"state\": \"" << FlattenStateName(job.state) << "\""
+            << ", \"stateCode\": " << static_cast<int>(job.state)
+            << ", \"radius\": " << job.radius
+            << ", \"targetGrade\": " << job.target_grade
+            << ", \"requiredLabor\": " << job.required_labor
+            << ", \"accumulatedLabor\": " << job.accumulated_labor
+            << ", \"assignedCount\": " << job.assigned_unit_ids.size()
+            << ", \"assignedUnitIds\": [";
+        WriteJsonIdArray(out, job.assigned_unit_ids);
+        out << "]"
+            << ", \"center\": {\"x\": " << job.center.x << ", \"y\": " << job.center.y << ", \"z\": " << job.center.z << "}"
+            << "}";
+    }
+    out << "\n  ],\n";
+
+    out << "  \"constructionSites\": [\n";
+    bool first_site = true;
+    for (const auto& [id, site] : world.construction_sites) {
+        if (!first_site) {
+            out << ",\n";
+        }
+        first_site = false;
+        out << "    {\"constructionSiteId\": " << id
+            << ", \"ownerPlayerId\": " << site.owner_player_id
+            << ", \"structureType\": \"" << StructureName(site.structure_type) << "\""
+            << ", \"structureTypeCode\": " << static_cast<int>(site.structure_type)
+            << ", \"stage\": \"" << ConstructionStageName(site.stage) << "\""
+            << ", \"stageCode\": " << static_cast<int>(site.stage)
+            << ", \"autoBuild\": true"
+            << ", \"footprintRadius\": " << site.footprint_radius
+            << ", \"health\": " << site.health
+            << ", \"maxHealth\": " << site.max_health
+            << ", \"requiredLabor\": " << site.required_labor
+            << ", \"accumulatedLabor\": " << site.accumulated_labor
+            << ", \"completionRatio\": " << site.completion_health_ratio
+            << ", \"assignedCount\": " << site.assigned_unit_ids.size()
+            << ", \"assignedUnitIds\": [";
+        WriteJsonIdArray(out, site.assigned_unit_ids);
+        out << "]"
+            << ", \"position\": {\"x\": " << site.position.x << ", \"y\": " << site.position.y << ", \"z\": " << site.position.z << "}"
+            << "}";
+    }
+    out << "\n  ],\n";
+
+    out << "  \"structures\": [\n";
+    bool first_structure = true;
+    for (const auto& [id, structure] : world.structures) {
+        if (!first_structure) {
+            out << ",\n";
+        }
+        first_structure = false;
+        out << "    {\"structureId\": " << id
+            << ", \"ownerPlayerId\": " << structure.owner_player_id
+            << ", \"structureType\": \"" << StructureName(structure.structure_type) << "\""
+            << ", \"structureTypeCode\": " << static_cast<int>(structure.structure_type)
+            << ", \"health\": " << structure.health
+            << ", \"maxHealth\": " << structure.max_health
+            << ", \"position\": {\"x\": " << structure.position.x << ", \"y\": " << structure.position.y << ", \"z\": " << structure.position.z << "}"
+            << "}";
+    }
+    out << "\n  ],\n";
+
+    out << "  \"droppedCargo\": [\n";
+    bool first_drop = true;
+    for (const auto& [id, drop] : world.dropped_cargo) {
+        if (!first_drop) {
+            out << ",\n";
+        }
+        first_drop = false;
+        const auto* primary_stack = PrimaryCargoStack(drop.cargo);
+        const dbd::Id primary_item_id = primary_stack == nullptr ? 0 : primary_stack->resource_id;
+        out << "    {\"droppedCargoId\": " << id
+            << ", \"sourceUnitId\": " << drop.source_unit_id
+            << ", \"stackCount\": " << drop.cargo.size()
+            << ", \"primaryItemId\": " << primary_item_id
+            << ", \"primaryItemName\": \"" << JsonEscape(primary_item_id == 0 ? "Empty" : CargoDisplayName(primary_item_id)) << "\""
+            << ", \"totalWeight\": " << CargoWeight(drop.cargo)
+            << ", \"totalValue\": " << CargoValue(drop.cargo)
+            << ", \"position\": {\"x\": " << drop.position.x << ", \"y\": " << drop.position.y << ", \"z\": " << drop.position.z << "}"
+            << "}";
+    }
+    out << "\n  ],\n";
+
+    out << "  \"resourceNodes\": [\n";
+    bool first_node = true;
+    for (const auto& [id, node] : world.resource_nodes) {
+        if (!first_node) {
+            out << ",\n";
+        }
+        first_node = false;
+        const dbd::Id produced_item_id = ProducedItemIdForRiskBand(node.risk_band);
+        out << "    {\"resourceNodeId\": " << id
+            << ", \"remainingAmount\": " << node.remaining_amount
+            << ", \"maxAmount\": " << node.max_amount
+            << ", \"riskBand\": \"" << RegionRiskBandName(node.risk_band) << "\""
+            << ", \"riskBandCode\": " << static_cast<int>(node.risk_band)
+            << ", \"producesItemId\": " << produced_item_id
+            << ", \"producesItemName\": \"" << JsonEscape(CargoDisplayName(produced_item_id)) << "\""
+            << ", \"richness\": " << node.richness
+            << ", \"extractionRate\": " << node.extraction_rate
+            << ", \"position\": {\"x\": " << node.position.x << ", \"y\": " << node.position.y << ", \"z\": " << node.position.z << "}"
+            << "}";
+    }
+    out << "\n  ]\n";
+    out << "}\n";
+    out.close();
+    if (!out) {
+        std::filesystem::remove(temp_path, ec);
+        return false;
+    }
+    return CommitTempOutputFile(temp_path, output_path);
+}
+
+const std::string& GetLastWorldStateDiagnostic() {
+    return g_last_world_state_diagnostic;
 }
 
 }  // namespace dbd_server

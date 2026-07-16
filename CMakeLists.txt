@@ -16,5 +16,29 @@ add_executable(dbd_server
     server/src/world_state.cpp
     server/src/world_bootstrap.cpp
     server/src/server_simulation.cpp
+    server/src/tactical_state.cpp
 )
 target_link_libraries(dbd_server PRIVATE dbd_shared)
+target_compile_definitions(dbd_server PRIVATE DBD_REBOOT_ROOT="${CMAKE_SOURCE_DIR}")
+
+add_executable(dbd_play_session
+    server/src/play_session.cpp
+    server/src/world_state.cpp
+    server/src/world_bootstrap.cpp
+    server/src/server_simulation.cpp
+    server/src/tactical_state.cpp
+)
+target_link_libraries(dbd_play_session PRIVATE dbd_shared)
+target_compile_definitions(dbd_play_session PRIVATE DBD_REBOOT_ROOT="${CMAKE_SOURCE_DIR}")
+
+add_executable(dbd_client WIN32
+    client/src/native_client.cpp
+)
+target_compile_definitions(dbd_client PRIVATE DBD_REBOOT_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(dbd_client PRIVATE dbd_shared user32 gdi32)
+
+add_executable(dbd_client3d WIN32
+    client/src/d3d_client.cpp
+)
+target_compile_definitions(dbd_client3d PRIVATE DBD_REBOOT_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(dbd_client3d PRIVATE dbd_shared user32 gdi32 d3d11 dxgi d3dcompiler)

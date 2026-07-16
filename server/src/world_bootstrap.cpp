@@ -61,8 +61,8 @@ BootstrapResult BootstrapSinglePlayerWarSlice(WorldState& world, const char* pla
     lineage.member_count = static_cast<std::uint32_t>(result.starter_unit_ids.size());
 
     auto& starter_node = CreateResourceNode(world, dbd::Vec3 {18.0f, 0.0f, 6.0f}, dbd::RegionRiskBand::Low, 1.0f, 1.0f, 1'000);
-    auto& mid_node = CreateResourceNode(world, dbd::Vec3 {92.0f, 0.0f, 44.0f}, dbd::RegionRiskBand::Medium, 1.45f, 1.25f, 1'500);
-    auto& frontier_node = CreateResourceNode(world, dbd::Vec3 {176.0f, 0.0f, 110.0f}, dbd::RegionRiskBand::High, 2.1f, 1.7f, 2'200);
+    auto& mid_node = CreateResourceNode(world, dbd::Vec3 {92.0f, 0.0f, 44.0f}, dbd::RegionRiskBand::Medium, 1.7f, 1.45f, 1'700);
+    auto& frontier_node = CreateResourceNode(world, dbd::Vec3 {176.0f, 0.0f, 110.0f}, dbd::RegionRiskBand::High, 2.6f, 1.9f, 2'500);
     result.resource_node_ids = {starter_node.resource_node_id, mid_node.resource_node_id, frontier_node.resource_node_id};
 
     auto& depot = CreateStructure(
