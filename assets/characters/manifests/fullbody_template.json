@@ -1,0 +1,81 @@
+{
+  "name": "starter_fullbody",
+  "canvas": {
+    "width": 1024,
+    "height": 1024
+  },
+  "output": "assets/characters/composites/fullbody/starter_fullbody.png",
+  "layers": [
+    {
+      "slot": "body_base",
+      "path": "assets/characters/base/body_base_front.png",
+      "x": 0,
+      "y": 0,
+      "visible": true
+    },
+    {
+      "slot": "underwear_or_inner",
+      "path": "",
+      "x": 0,
+      "y": 0,
+      "visible": false
+    },
+    {
+      "slot": "pants",
+      "path": "assets/characters/clothes/pants_basic_front.png",
+      "x": 0,
+      "y": 0,
+      "visible": true
+    },
+    {
+      "slot": "shirt",
+      "path": "assets/characters/clothes/shirt_basic_front.png",
+      "x": 0,
+      "y": 0,
+      "visible": true
+    },
+    {
+      "slot": "outerwear",
+      "path": "",
+      "x": 0,
+      "y": 0,
+      "visible": false
+    },
+    {
+      "slot": "shoes",
+      "path": "assets/characters/clothes/boots_basic_front.png",
+      "x": 0,
+      "y": 0,
+      "visible": true
+    },
+    {
+      "slot": "hair",
+      "path": "",
+      "x": 0,
+      "y": 0,
+      "visible": false
+    },
+    {
+      "slot": "headgear",
+      "path": "",
+      "x": 0,
+      "y": 0,
+      "visible": false
+    },
+    {
+      "slot": "held_item",
+      "path": "",
+      "x": 0,
+      "y": 0,
+      "visible": false
+    },
+    {
+      "slot": "back_item",
+      "path": "",
+      "x": 0,
+      "y": 0,
+      "visible": false
+    }
+  ]
+}
+

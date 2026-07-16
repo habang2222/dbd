@@ -1,0 +1,1456 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>DBDReboot Debug View</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #111827;
+      color: #e5e7eb;
+    }
+
+    header, section {
+      padding: 16px 20px;
+    }
+
+    header {
+      border-bottom: 1px solid #374151;
+      background: #0f172a;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 8px;
+      font-weight: 600;
+    }
+
+    .hint {
+      color: #9ca3af;
+      font-size: 14px;
+    }
+
+    .banner {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      border: 1px solid #334155;
+      background: #1f2937;
+    }
+
+    .banner.pass {
+      border-color: #166534;
+      background: #052e16;
+      color: #dcfce7;
+    }
+
+    .banner.fail {
+      border-color: #7f1d1d;
+      background: #450a0a;
+      color: #fecaca;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      align-items: center;
+    }
+
+    .controls button,
+    .controls select,
+    .controls input {
+      background: #1f2937;
+      color: #e5e7eb;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+
+    .controls button {
+      background: #2563eb;
+      border-color: #2563eb;
+      cursor: pointer;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(520px, 1.4fr) minmax(360px, 1fr);
+      gap: 12px;
+      padding: 0 20px 20px;
+    }
+
+    .panel {
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .board-shell {
+      display: grid;
+      gap: 10px;
+    }
+
+    .board-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .board-toolbar button,
+    .board-toolbar select,
+    .board-toolbar input {
+      background: #0f172a;
+      color: #e5e7eb;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 7px 9px;
+    }
+
+    .board-toolbar button.active {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 1px #60a5fa inset;
+      background: #1d4ed8;
+    }
+
+    .board-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #334155;
+      background:
+        linear-gradient(0deg, rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(180deg, #08111f 0%, #0f1a2e 100%);
+      background-size: 32px 32px, 32px 32px, auto;
+      user-select: none;
+    }
+
+    .board-stage.dragging {
+      cursor: crosshair;
+    }
+
+    .board-entity {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      border-radius: 999px;
+      pointer-events: auto;
+      box-sizing: border-box;
+    }
+
+    .entity-unit {
+      width: 12px;
+      height: 12px;
+      border: 1px solid rgba(255,255,255,0.3);
+      cursor: pointer;
+    }
+
+    .entity-unit.selected {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #f8fafc;
+      box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.4);
+      z-index: 3;
+    }
+
+    .entity-node {
+      width: 10px;
+      height: 10px;
+      background: #f59e0b;
+      border: 1px solid rgba(0,0,0,0.5);
+      cursor: pointer;
+    }
+
+    .entity-storage {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      background: #22c55e;
+      border: 1px solid rgba(0,0,0,0.55);
+      cursor: pointer;
+    }
+
+    .entity-structure {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      background: #38bdf8;
+      border: 1px solid rgba(0,0,0,0.55);
+      cursor: pointer;
+    }
+
+    .entity-site {
+      width: 18px;
+      height: 18px;
+      border-radius: 5px;
+      background: rgba(251, 146, 60, 0.25);
+      border: 2px dashed #fb923c;
+      cursor: pointer;
+    }
+
+    .entity-flatten {
+      border: 1px dashed rgba(163, 230, 53, 0.95);
+      background: rgba(163, 230, 53, 0.08);
+      border-radius: 999px;
+      cursor: pointer;
+    }
+
+    .entity-retreat {
+      box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.45);
+    }
+
+    .entity-combat {
+      box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.45);
+    }
+
+    .entity-working {
+      box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.45);
+    }
+
+    .selection-box {
+      position: absolute;
+      border: 1px solid #93c5fd;
+      background: rgba(96, 165, 250, 0.15);
+      pointer-events: none;
+      display: none;
+    }
+
+    .board-info {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .mini-card {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .metric {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 4px 0;
+      font-size: 13px;
+    }
+
+    .phase-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid #334155;
+      background: #111827;
+      color: #e5e7eb;
+    }
+
+    .phase-pill.flatten {
+      border-color: #65a30d;
+      background: #1a2e05;
+      color: #d9f99d;
+    }
+
+    .phase-pill.build {
+      border-color: #ea580c;
+      background: #431407;
+      color: #fed7aa;
+    }
+
+    .phase-pill.combat {
+      border-color: #be123c;
+      background: #4c0519;
+      color: #fecdd3;
+    }
+
+    .phase-pill.stable {
+      border-color: #0369a1;
+      background: #082f49;
+      color: #bae6fd;
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .card {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .inspector-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .command-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .command-grid label {
+      font-size: 13px;
+      color: #cbd5e1;
+      display: grid;
+      gap: 4px;
+    }
+
+    .command-grid input,
+    .command-grid select,
+    textarea {
+      width: 100%;
+      min-width: 0;
+      background: #020617;
+      color: #e5e7eb;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+
+    textarea {
+      min-height: 120px;
+    }
+
+    .mono {
+      font-family: Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 12px;
+      color: #cbd5e1;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.3);
+    }
+
+    @media (max-width: 1180px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .board-info,
+      .command-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>DBDReboot Debug View</h1>
+    <div class="hint">
+      Use <code>?snapshot=../runtime-save/world_snapshot.json&amp;report=../runtime-save/regression_report.json</code>
+      when serving files locally. Chromium-based browsers can also open the <code>runtime-save</code> folder directly.
+      Current rule set: flattening is collaborative labor, construction auto-builds after placement, and escort units protect workers/sites instead of speeding construction.
+    </div>
+    <div id="statusBanner" class="banner">Waiting for snapshot input.</div>
+    <div class="controls">
+      <button id="pickFolderButton">Open runtime-save Folder</button>
+      <button id="pollButton">Toggle Polling</button>
+      <button id="refreshButton">Refresh Now</button>
+      <span class="hint" id="pollStatus">Polling: off</span>
+    </div>
+  </header>
+
+  <section>
+    <textarea id="jsonInput" placeholder="Paste world_snapshot.json or regression_report.json here..."></textarea>
+    <div class="controls">
+      <button id="renderButton">Render Snapshot</button>
+      <button id="loadReportButton">Render Report JSON</button>
+    </div>
+  </section>
+
+  <section style="padding-top:0;">
+    <div id="phaseBanner" class="panel">
+      <strong>Phase</strong>
+      <div class="hint">Waiting for world snapshot.</div>
+    </div>
+  </section>
+
+  <div class="layout">
+    <div class="panel">
+      <div class="board-shell">
+        <div>
+          <h2>World Board</h2>
+          <div class="hint">Click units to select. Ctrl/Meta-click adds to selection. Drag on empty ground for box select. Flattening gets faster with more assigned units. Construction starts after a valid placement and then auto-builds on its own, so spare units should shift to escort, scouting, hauling, or defense.</div>
+        </div>
+
+        <div class="board-toolbar">
+          <button id="modeSelect" class="active">Select</button>
+          <button id="modeMove">Move</button>
+          <button id="modeAttack">Attack</button>
+          <button id="modeHarvest">Harvest</button>
+          <button id="modeReturn">Return</button>
+          <button id="modeFlatten">Flatten</button>
+          <button id="modeBuild">Build</button>
+          <input id="buildStructureType" type="text" value="StorageDepot" placeholder="StorageDepot / Extractor / DefenseNode">
+          <input id="buildRadius" type="number" step="0.1" value="8">
+          <input id="flattenGrade" type="number" step="0.01" value="0.12">
+        </div>
+
+        <div id="worldBoard" class="board-stage">
+          <div id="selectionBox" class="selection-box"></div>
+        </div>
+
+        <div class="legend">
+          <div class="legend-item"><span class="legend-swatch" style="background:#60a5fa;"></span>Player 1 Unit</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#f472b6;"></span>Player 2 Unit</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#f59e0b;"></span>Resource Node</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#22c55e;border-radius:4px;"></span>Storage</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#38bdf8;border-radius:4px;"></span>Structure</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#fb923c;border-radius:4px;"></span>Construction Site</div>
+        </div>
+
+        <div class="board-info">
+          <div class="mini-card" id="worldSummary"></div>
+          <div class="mini-card" id="selectionSummary"></div>
+          <div class="mini-card" id="sessionStatus"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel inspector-grid">
+      <div>
+        <h2>Inspector</h2>
+        <div id="selectedUnitsPanel" class="list"></div>
+      </div>
+
+      <div>
+        <h3>Command Builder</h3>
+        <div class="command-grid">
+          <label>Command
+            <select id="commandType">
+              <option value="move">Move</option>
+              <option value="attack">Attack</option>
+              <option value="harvest">Harvest</option>
+              <option value="return_to_storage">Return To Storage</option>
+              <option value="start_flatten">Start Flatten</option>
+              <option value="start_construction">Start Construction</option>
+            </select>
+          </label>
+          <label>Controller / Player ID
+            <input id="controllerPlayerId" type="number" placeholder="1">
+          </label>
+          <label>Target X
+            <input id="targetX" type="number" step="0.1" placeholder="72">
+          </label>
+          <label>Target Z
+            <input id="targetZ" type="number" step="0.1" placeholder="38">
+          </label>
+          <label>Target Entity ID
+            <input id="targetEntityId" type="number" placeholder="resource/unit/site id">
+          </label>
+          <label>Target Kind / Structure Type
+            <input id="targetKind" type="text" placeholder="Unit / ConstructionSite / Structure / Extractor">
+          </label>
+          <label>Radius / Footprint
+            <input id="radiusValue" type="number" step="0.1" placeholder="8">
+          </label>
+          <label>Target Grade
+            <input id="targetGrade" type="number" step="0.01" placeholder="0.12">
+          </label>
+        </div>
+        <div class="controls">
+          <button id="queueCommandButton">Write command_spool/inbox</button>
+          <button id="copyCommandButton">Copy Command JSON</button>
+          <button id="clearSelectionButton">Clear Selection</button>
+        </div>
+        <textarea id="commandPreview" placeholder="Generated command JSON will appear here..."></textarea>
+        <div id="commandWriteStatus" class="hint" style="margin-top: 8px;"></div>
+      </div>
+
+      <div>
+        <h3>Regression Report</h3>
+        <div id="reportSummary" class="list"></div>
+      </div>
+
+      <div>
+        <h3>World Objects</h3>
+        <div id="worldObjects" class="list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      snapshot: null,
+      report: null,
+      sessionStatus: null,
+      selectedUnitIds: new Set(),
+      folderHandle: null,
+      polling: false,
+      pollTimer: null,
+      commandMode: "select",
+      worldBounds: null,
+      dragState: null
+    };
+
+    const playerColors = ["#60a5fa", "#f472b6", "#34d399", "#fbbf24", "#c084fc", "#f87171"];
+
+    function metric(label, value) {
+      return `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`;
+    }
+
+    function renderCard(html) {
+      return `<div class="card">${html}</div>`;
+    }
+
+    function countMatching(units, predicate) {
+      return (units || []).filter(predicate).length;
+    }
+
+    function isWorkingOrder(order) {
+      return ["FlattenSite", "Harvest", "HaulToStorage"].includes(order);
+    }
+
+    function isEscortReady(unit) {
+      return unit.alive && !unit.permanentlyDead && !["FlattenSite", "Harvest", "HaulToStorage", "Retreat"].includes(unit.order);
+    }
+
+    function getWorldPhase(snapshot) {
+      const flattenJobs = snapshot.flattenJobs || [];
+      const activeFlattenJobs = flattenJobs.filter(job => job.state === "Planned" || job.state === "InProgress");
+      const sites = snapshot.constructionSites || [];
+      const activeSites = sites.filter(site => site.stage === "UnderConstruction" || site.stage === "WaitingForFlatten");
+      const combatUnits = countUnitsByOrder(snapshot.units, "AttackTarget");
+
+      if (combatUnits > 0 && activeSites.length > 0) {
+        return {
+          key: "combat",
+          label: "공사장 방어/교전 국면",
+          detail: "공사장이 살아 있는 동안 교전이 진행 중이다. 호위와 추격 판단이 제일 중요하다."
+        };
+      }
+      if (activeFlattenJobs.length > 0) {
+        return {
+          key: "flatten",
+          label: "평탄화 국면",
+          detail: "여러 유닛을 붙일수록 평탄화가 빨라진다. 대신 노출되는 작업 유닛도 많아진다."
+        };
+      }
+      if (activeSites.length > 0) {
+        return {
+          key: "build",
+          label: "자동 건설 국면",
+          detail: "착공 후 공사는 자동으로 진행된다. 남는 유닛은 호위, 정찰, 수송, 전투로 돌리는 단계다."
+        };
+      }
+      return {
+        key: "stable",
+        label: "준비/운영 국면",
+        detail: "채집, 저장, 배치 정리, 다음 평탄화 위치 선정이 중심이다."
+      };
+    }
+
+    function setBanner(text, kind = "") {
+      const banner = document.getElementById("statusBanner");
+      banner.textContent = text;
+      banner.className = `banner ${kind}`.trim();
+    }
+
+    function countUnitsByOrder(units, order) {
+      return (units || []).filter(unit => unit.order === order).length;
+    }
+
+    function selectedUnits(snapshot) {
+      return (snapshot?.units || []).filter(unit => state.selectedUnitIds.has(unit.unitId));
+    }
+
+    function ownerColor(ownerPlayerId) {
+      return playerColors[(Math.max(1, ownerPlayerId) - 1) % playerColors.length];
+    }
+
+    function computeWorldBounds(snapshot) {
+      const positions = [];
+      (snapshot.units || []).forEach(unit => positions.push(unit.position));
+      (snapshot.resourceNodes || []).forEach(node => positions.push(node.position));
+      (snapshot.storageSites || []).forEach(storage => positions.push(storage.position));
+      (snapshot.structures || []).forEach(structure => positions.push(structure.position));
+      (snapshot.constructionSites || []).forEach(site => positions.push(site.position));
+      (snapshot.flattenJobs || []).forEach(job => positions.push(job.center));
+
+      if (!positions.length) {
+        return { minX: 0, maxX: 100, minZ: 0, maxZ: 100, width: 100, height: 100 };
+      }
+
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      positions.forEach(pos => {
+        minX = Math.min(minX, pos.x);
+        maxX = Math.max(maxX, pos.x);
+        minZ = Math.min(minZ, pos.z);
+        maxZ = Math.max(maxZ, pos.z);
+      });
+
+      const padding = 10;
+      minX -= padding;
+      maxX += padding;
+      minZ -= padding;
+      maxZ += padding;
+
+      return {
+        minX,
+        maxX,
+        minZ,
+        maxZ,
+        width: Math.max(1, maxX - minX),
+        height: Math.max(1, maxZ - minZ)
+      };
+    }
+
+    function worldToBoard(pos) {
+      const board = document.getElementById("worldBoard");
+      const rect = board.getBoundingClientRect();
+      const bounds = state.worldBounds;
+      const x = ((pos.x - bounds.minX) / bounds.width) * rect.width;
+      const y = ((pos.z - bounds.minZ) / bounds.height) * rect.height;
+      return { x, y };
+    }
+
+    function boardToWorld(x, y) {
+      const board = document.getElementById("worldBoard");
+      const rect = board.getBoundingClientRect();
+      const bounds = state.worldBounds;
+      return {
+        x: bounds.minX + (x / rect.width) * bounds.width,
+        y: 0,
+        z: bounds.minZ + (y / rect.height) * bounds.height
+      };
+    }
+
+    function clearBoardEntities() {
+      document.querySelectorAll(".board-entity").forEach(node => node.remove());
+    }
+
+    function appendBoardEntity({ className, x, y, size, background, borderColor, title, dataset = {}, label = "" }) {
+      const board = document.getElementById("worldBoard");
+      const node = document.createElement("div");
+      node.className = `board-entity ${className}`;
+      node.style.left = `${x}px`;
+      node.style.top = `${y}px`;
+      if (size) {
+        node.style.width = `${size}px`;
+        node.style.height = `${size}px`;
+      }
+      if (background) {
+        node.style.background = background;
+      }
+      if (borderColor) {
+        node.style.borderColor = borderColor;
+      }
+      node.title = title || "";
+      Object.entries(dataset).forEach(([key, value]) => {
+        node.dataset[key] = value;
+      });
+      if (label) {
+        node.textContent = label;
+        node.style.display = "grid";
+        node.style.placeItems = "center";
+        node.style.fontSize = "9px";
+        node.style.fontWeight = "700";
+      }
+      board.appendChild(node);
+      return node;
+    }
+
+    function renderBoard(snapshot) {
+      state.worldBounds = computeWorldBounds(snapshot);
+      clearBoardEntities();
+
+      (snapshot.flattenJobs || []).forEach(job => {
+        const center = worldToBoard(job.center);
+        const radiusX = (job.radius / state.worldBounds.width) * document.getElementById("worldBoard").getBoundingClientRect().width;
+        const radiusY = (job.radius / state.worldBounds.height) * document.getElementById("worldBoard").getBoundingClientRect().height;
+        appendBoardEntity({
+          className: "entity-flatten",
+          x: center.x,
+          y: center.y,
+          size: Math.max(radiusX, radiusY) * 2,
+          title: `Flatten ${job.flattenJobId}`
+        });
+      });
+
+      (snapshot.resourceNodes || []).forEach(node => {
+        const boardPos = worldToBoard(node.position);
+        appendBoardEntity({
+          className: "entity-node",
+          x: boardPos.x,
+          y: boardPos.y,
+          title: `Node ${node.resourceNodeId}`,
+          dataset: { entityType: "resource", entityId: node.resourceNodeId }
+        });
+      });
+
+      (snapshot.storageSites || []).forEach(storage => {
+        const boardPos = worldToBoard(storage.position);
+        appendBoardEntity({
+          className: "entity-storage",
+          x: boardPos.x,
+          y: boardPos.y,
+          title: `Storage ${storage.storageSiteId}`,
+          dataset: { entityType: "storage", entityId: storage.storageSiteId }
+        });
+      });
+
+      (snapshot.structures || []).forEach(structure => {
+        const boardPos = worldToBoard(structure.position);
+        appendBoardEntity({
+          className: "entity-structure",
+          x: boardPos.x,
+          y: boardPos.y,
+          title: `Structure ${structure.structureId}`,
+          dataset: { entityType: "structure", entityId: structure.structureId }
+        });
+      });
+
+      (snapshot.constructionSites || []).forEach(site => {
+        const boardPos = worldToBoard(site.position);
+        appendBoardEntity({
+          className: "entity-site",
+          x: boardPos.x,
+          y: boardPos.y,
+          title: `Construction Site ${site.constructionSiteId} | ${site.stage} | auto-build ${(site.completionRatio ?? 0).toFixed(2)}`,
+          dataset: { entityType: "site", entityId: site.constructionSiteId }
+        });
+      });
+
+      (snapshot.units || []).forEach(unit => {
+        const boardPos = worldToBoard(unit.position);
+        const classNames = ["entity-unit"];
+        if (state.selectedUnitIds.has(unit.unitId)) {
+          classNames.push("selected");
+        }
+        if (unit.order === "Retreat") {
+          classNames.push("entity-retreat");
+        } else if (unit.order === "AttackTarget") {
+          classNames.push("entity-combat");
+        } else if (["FlattenSite", "BuildSite", "Harvest", "HaulToStorage"].includes(unit.order)) {
+          classNames.push("entity-working");
+        }
+
+        appendBoardEntity({
+          className: classNames.join(" "),
+          x: boardPos.x,
+          y: boardPos.y,
+          background: ownerColor(unit.ownerPlayerId),
+          title: `Unit ${unit.unitId} (${unit.order})`,
+          dataset: { entityType: "unit", entityId: unit.unitId }
+        });
+      });
+
+      wireBoardEntities();
+    }
+
+    function renderSelectionSummary() {
+      const selected = selectedUnits(state.snapshot);
+      const root = document.getElementById("selectionSummary");
+      if (!selected.length) {
+        root.innerHTML =
+          `<strong>No selection</strong>` +
+          metric("Selected Units", 0) +
+          `<div class="hint">Use click or drag-select on the board.</div>`;
+        return;
+      }
+
+      const ownerIds = [...new Set(selected.map(unit => unit.ownerPlayerId))];
+      document.getElementById("controllerPlayerId").value = ownerIds[0] ?? "";
+      root.innerHTML =
+        `<strong>Selection</strong>` +
+        metric("Selected Units", selected.length) +
+        metric("Owners", ownerIds.join(", ")) +
+        metric("Orders", [...new Set(selected.map(unit => unit.order))].join(", ")) +
+        metric("Cargo Weight", selected.reduce((sum, unit) => sum + (unit.cargoWeight || 0), 0).toFixed(1)) +
+        metric("Escort Ready", selected.filter(isEscortReady).length);
+    }
+
+    function renderWorldSummary(snapshot) {
+      const flattenJobs = snapshot.flattenJobs || [];
+      const activeFlattenJobs = flattenJobs.filter(job => job.state === "Planned" || job.state === "InProgress");
+      const activeSites = (snapshot.constructionSites || []).filter(site => site.stage === "UnderConstruction" || site.stage === "WaitingForFlatten");
+      const escortReadyUnits = countMatching(snapshot.units, isEscortReady);
+      document.getElementById("worldSummary").innerHTML =
+        `<strong>World</strong>` +
+        metric("Tick", snapshot.tick ?? "-") +
+        metric("Players", snapshot.players?.length ?? 0) +
+        metric("Units", snapshot.units?.length ?? 0) +
+        metric("Working Units", countMatching(snapshot.units, unit => isWorkingOrder(unit.order))) +
+        metric("Combat Units", countUnitsByOrder(snapshot.units, "AttackTarget")) +
+        metric("Escort Ready", escortReadyUnits) +
+        metric("Flatten Jobs", activeFlattenJobs.length) +
+        metric("Sites", activeSites.length);
+    }
+
+    function renderPhaseBanner(snapshot) {
+      const phase = getWorldPhase(snapshot);
+      const activeFlattenJobs = (snapshot.flattenJobs || []).filter(job => job.state === "Planned" || job.state === "InProgress");
+      const activeSites = (snapshot.constructionSites || []).filter(site => site.stage === "UnderConstruction" || site.stage === "WaitingForFlatten");
+      const escortReadyUnits = countMatching(snapshot.units, isEscortReady);
+      document.getElementById("phaseBanner").innerHTML =
+        `<strong>Current Loop Phase</strong>` +
+        `<div style="margin-top:8px;"><span class="phase-pill ${phase.key}">${phase.label}</span></div>` +
+        `<div class="hint" style="margin-top:8px;">${phase.detail}</div>` +
+        metric("Active Flatten Jobs", activeFlattenJobs.length) +
+        metric("Auto-Build Sites", activeSites.length) +
+        metric("Escort Ready Units", escortReadyUnits);
+    }
+
+    function renderSelectedUnitsPanel() {
+      const selected = selectedUnits(state.snapshot);
+      const root = document.getElementById("selectedUnitsPanel");
+      if (!selected.length) {
+        root.innerHTML = renderCard(`<div class="hint">No units selected.</div>`);
+        return;
+      }
+
+      root.innerHTML = selected.map(unit =>
+        renderCard(
+          `<strong>Unit ${unit.unitId}</strong>` +
+          metric("Owner", unit.ownerPlayerId) +
+          metric("Order", unit.order) +
+          metric("Escort Role", isEscortReady(unit) ? "Available" : "Busy") +
+          metric("Health", `${Number(unit.health).toFixed(1)} / ${Number(unit.maxHealth).toFixed(1)}`) +
+          metric("Stamina", `${Number(unit.stamina).toFixed(1)} / ${Number(unit.maxStamina).toFixed(1)}`) +
+          metric("Cargo Weight", Number(unit.cargoWeight).toFixed(1)) +
+          metric("Target Entity", unit.assignmentTargetEntityId || "-") +
+          metric("Position", `${Number(unit.position.x).toFixed(1)}, ${Number(unit.position.z).toFixed(1)}`) +
+          metric("Move Target", `${Number(unit.moveTarget.x).toFixed(1)}, ${Number(unit.moveTarget.z).toFixed(1)}`)
+        )
+      ).join("");
+    }
+
+    function renderWorldObjects(snapshot) {
+      const structures = (snapshot.structures || []).map(structure =>
+        renderCard(
+          `<strong>Structure ${structure.structureId}</strong>` +
+          metric("Type", structure.structureType) +
+          metric("Owner", structure.ownerPlayerId) +
+          metric("Health", `${structure.health} / ${structure.maxHealth}`)
+        )
+      );
+
+      const storageSites = (snapshot.storageSites || []).map(storage =>
+        renderCard(
+          `<strong>Storage ${storage.storageSiteId}</strong>` +
+          metric("Owner", storage.ownerPlayerId) +
+          metric("Structure", storage.structureId) +
+          metric("Stacks", storage.storedStackCount) +
+          metric("Position", `${storage.position.x}, ${storage.position.z}`)
+        )
+      );
+
+      const nodes = (snapshot.resourceNodes || []).map(node =>
+        renderCard(
+          `<strong>Node ${node.resourceNodeId}</strong>` +
+          metric("Remaining", `${node.remainingAmount} / ${node.maxAmount}`) +
+          metric("Position", `${node.position.x}, ${node.position.z}`)
+        )
+      );
+
+      const sites = (snapshot.constructionSites || []).map(site =>
+        renderCard(
+          `<strong>Site ${site.constructionSiteId}</strong>` +
+          metric("Type", site.structureType) +
+          metric("Stage", site.stage) +
+          metric("Auto Build", site.autoBuild ? "Yes" : "No") +
+          metric("Progress", `${Math.round((Number(site.completionRatio) || 0) * 100)}%`) +
+          metric("Health", `${Number(site.health).toFixed(1)} / ${Number(site.maxHealth).toFixed(1)}`) +
+          metric("Risk", Number(site.health) < Number(site.maxHealth) ? "Under Attack" : "Holding") +
+          metric("Labor", `${Number(site.accumulatedLabor).toFixed(1)} / ${Number(site.requiredLabor).toFixed(1)}`) +
+          metric("Assigned", site.assignedCount)
+        )
+      );
+
+      const flattenJobs = (snapshot.flattenJobs || []).map(job =>
+        renderCard(
+          `<strong>Flatten ${job.flattenJobId}</strong>` +
+          metric("State", job.state) +
+          metric("Progress", `${Math.round(((Number(job.accumulatedLabor) || 0) / Math.max(1, Number(job.requiredLabor) || 1)) * 100)}%`) +
+          metric("Labor", `${Number(job.accumulatedLabor).toFixed(1)} / ${Number(job.requiredLabor).toFixed(1)}`) +
+          metric("Assigned", job.assignedCount)
+        )
+      );
+
+      document.getElementById("worldObjects").innerHTML = structures.concat(storageSites, nodes, sites, flattenJobs).join("");
+    }
+
+    function renderReport(report) {
+      state.report = report;
+      const summary = `${report.overallPass ? "PASS" : "FAIL"} | ${report.steps?.length ?? 0} steps`;
+      setBanner(`Regression ${summary}`, report.overallPass ? "pass" : "fail");
+      const root = document.getElementById("reportSummary");
+      root.innerHTML = renderCard(
+        `<strong>Regression</strong>` +
+        metric("Overall", report.overallPass ? "PASS" : "FAIL") +
+        metric("Tick", report.tick ?? "-") +
+        metric("Steps", report.steps?.length ?? 0)
+      ) + (report.steps || []).map(step =>
+        renderCard(`<strong>${step.name}</strong>` + metric("Passed", step.passed) + `<div class="hint">${step.message}</div>`)
+      ).join("");
+    }
+
+    function renderSessionStatus(sessionStatus) {
+      state.sessionStatus = sessionStatus;
+      const root = document.getElementById("sessionStatus");
+      if (!sessionStatus) {
+        root.innerHTML = `<strong>Session</strong><div class="hint">No session status loaded.</div>`;
+        return;
+      }
+      root.innerHTML =
+        `<strong>Session</strong>` +
+        metric("Mode", sessionStatus.mode ?? "-") +
+        metric("Tick", sessionStatus.tick ?? "-") +
+        metric("Last Command", sessionStatus.lastCommandOk ? "OK" : "FAIL") +
+        metric("Command Queue", sessionStatus.lastCommandMessage ? "Consumed" : "Idle") +
+        `<div class="hint">${sessionStatus.lastCommandMessage ?? ""}</div>`;
+    }
+
+    function renderSnapshot(snapshot) {
+      state.snapshot = snapshot;
+      renderBoard(snapshot);
+      renderPhaseBanner(snapshot);
+      renderWorldSummary(snapshot);
+      renderSelectionSummary();
+      renderSelectedUnitsPanel();
+      renderWorldObjects(snapshot);
+      refreshCommandPreview();
+    }
+
+    function wireBoardEntities() {
+      document.querySelectorAll(".board-entity[data-entity-type]").forEach(node => {
+        node.addEventListener("click", event => {
+          event.stopPropagation();
+          const entityType = node.dataset.entityType;
+          const entityId = Number(node.dataset.entityId);
+          handleBoardEntityClick(entityType, entityId, event);
+        });
+      });
+    }
+
+    function setCommandMode(mode) {
+      state.commandMode = mode;
+      [
+        ["modeSelect", "select"],
+        ["modeMove", "move"],
+        ["modeAttack", "attack"],
+        ["modeHarvest", "harvest"],
+        ["modeReturn", "return_to_storage"],
+        ["modeFlatten", "start_flatten"],
+        ["modeBuild", "start_construction"]
+      ].forEach(([buttonId, buttonMode]) => {
+        document.getElementById(buttonId).classList.toggle("active", mode === buttonMode);
+      });
+      const commandMap = {
+        select: "move",
+        move: "move",
+        attack: "attack",
+        harvest: "harvest",
+        return_to_storage: "return_to_storage",
+        start_flatten: "start_flatten",
+        start_construction: "start_construction"
+      };
+      if (commandMap[mode]) {
+        document.getElementById("commandType").value = commandMap[mode];
+      }
+      refreshCommandPreview();
+    }
+
+    function updateCommandInputsFromWorldPoint(point) {
+      document.getElementById("targetX").value = point.x.toFixed(1);
+      document.getElementById("targetZ").value = point.z.toFixed(1);
+    }
+
+    function queueImmediateCommand() {
+      const payload = refreshCommandPreview();
+      writeCommandFile(payload);
+    }
+
+    function handleBoardEntityClick(entityType, entityId, event) {
+      if (entityType === "unit" && state.commandMode === "select") {
+        if (!event.ctrlKey && !event.metaKey) {
+          state.selectedUnitIds.clear();
+        }
+        if (state.selectedUnitIds.has(entityId)) {
+          state.selectedUnitIds.delete(entityId);
+        } else {
+          state.selectedUnitIds.add(entityId);
+        }
+        renderSnapshot(state.snapshot);
+        return;
+      }
+
+      if (state.commandMode === "attack" && ["unit", "site", "structure"].includes(entityType)) {
+        document.getElementById("targetEntityId").value = entityId;
+        document.getElementById("targetKind").value =
+          entityType === "site" ? "ConstructionSite" :
+          entityType === "structure" ? "Structure" : "Unit";
+        queueImmediateCommand();
+        return;
+      }
+
+      if (state.commandMode === "harvest" && entityType === "resource") {
+        document.getElementById("targetEntityId").value = entityId;
+        queueImmediateCommand();
+        return;
+      }
+
+      if (state.commandMode === "return_to_storage" && entityType === "storage") {
+        document.getElementById("targetEntityId").value = entityId;
+        queueImmediateCommand();
+      }
+    }
+
+    function buildCommandPayload() {
+      const type = document.getElementById("commandType").value;
+      const controllerPlayerId = Number(document.getElementById("controllerPlayerId").value || 0);
+      const targetEntityId = Number(document.getElementById("targetEntityId").value || 0);
+      const targetKind = document.getElementById("targetKind").value.trim();
+      const radius = Number(document.getElementById("radiusValue").value || 0);
+      const targetGrade = Number(document.getElementById("targetGrade").value || 0.12);
+      const x = Number(document.getElementById("targetX").value || 0);
+      const z = Number(document.getElementById("targetZ").value || 0);
+      const unitIds = [...state.selectedUnitIds];
+      const unitId = unitIds[0] || 0;
+
+      const payload = { commands: [ { type } ] };
+      const command = payload.commands[0];
+
+      if (["move", "attack"].includes(type)) {
+        command.controllerPlayerId = controllerPlayerId;
+        command.unitIds = unitIds;
+      }
+      if (type === "move") {
+        command.target = { x, y: 0, z };
+      } else if (type === "attack") {
+        command.targetKind = targetKind || "Unit";
+        command.targetEntityId = targetEntityId;
+      } else if (type === "harvest") {
+        command.controllerPlayerId = controllerPlayerId;
+        command.unitId = unitId;
+        command.resourceNodeId = targetEntityId;
+      } else if (type === "return_to_storage") {
+        command.unitId = unitId;
+        const selected = selectedUnits(state.snapshot)[0];
+        command.storageSiteId = targetEntityId || 0;
+        if (!command.storageSiteId && selected) {
+          command.playerId = selected.ownerPlayerId;
+        }
+      } else if (type === "start_flatten") {
+        command.playerId = controllerPlayerId;
+        command.center = { x, y: 0, z };
+        command.radius = radius || Number(document.getElementById("buildRadius").value || 8);
+        command.targetGrade = targetGrade || Number(document.getElementById("flattenGrade").value || 0.12);
+        command.unitIds = unitIds;
+      } else if (type === "start_construction") {
+        command.playerId = controllerPlayerId;
+        command.structureType = targetKind || document.getElementById("buildStructureType").value || "StorageDepot";
+        command.position = { x, y: 0, z };
+        command.footprintRadius = radius || Number(document.getElementById("buildRadius").value || 8);
+      }
+
+      return payload;
+    }
+
+    function refreshCommandPreview() {
+      const payload = buildCommandPayload();
+      document.getElementById("commandPreview").value = JSON.stringify(payload, null, 2);
+      return payload;
+    }
+
+    async function writeCommandFile(payload) {
+      if (!state.folderHandle) {
+        document.getElementById("commandWriteStatus").textContent = "Folder access is not active. Use Open runtime-save Folder first, or copy the JSON manually.";
+        return;
+      }
+      try {
+        const spoolHandle = await state.folderHandle.getDirectoryHandle("command_spool", { create: true });
+        const inboxHandle = await spoolHandle.getDirectoryHandle("inbox", { create: true });
+        const firstCommand = Array.isArray(payload.commands) && payload.commands.length > 0 ? payload.commands[0] : {};
+        const commandId = firstCommand.commandId || `debug-${Date.now()}`;
+        if (!firstCommand.commandId) {
+          firstCommand.commandId = commandId;
+        }
+        const fileHandle = await inboxHandle.getFileHandle(`${commandId}.json`, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(payload, null, 2));
+        await writable.close();
+        document.getElementById("commandWriteStatus").textContent = `command_spool/inbox/${commandId}.json written.`;
+      } catch (error) {
+        document.getElementById("commandWriteStatus").textContent = `command spool write failed: ${error.message}`;
+        setBanner(`Command write failed: ${error.message}`, "fail");
+      }
+    }
+
+    async function readJsonFromFolder(filename) {
+      if (!state.folderHandle) {
+        return null;
+      }
+      try {
+        const fileHandle = await state.folderHandle.getFileHandle(filename);
+        const file = await fileHandle.getFile();
+        return JSON.parse(await file.text());
+      } catch (_) {
+        return null;
+      }
+    }
+
+    async function refreshFromFolder() {
+      if (!state.folderHandle) {
+        return;
+      }
+      const snapshot = await readJsonFromFolder("world_snapshot.json");
+      const report = await readJsonFromFolder("regression_report.json");
+      const sessionStatus = await readJsonFromFolder("session_status.json");
+
+      if (snapshot) {
+        renderSnapshot(snapshot);
+      }
+      if (report) {
+        renderReport(report);
+      }
+      renderSessionStatus(sessionStatus);
+
+      if (snapshot) {
+        setBanner("Snapshot loaded from runtime-save folder.", "pass");
+      }
+    }
+
+    function startPolling() {
+      if (state.polling) {
+        return;
+      }
+      state.polling = true;
+      document.getElementById("pollStatus").textContent = "Polling: on";
+      state.pollTimer = setInterval(() => {
+        refreshFromFolder();
+      }, 1000);
+    }
+
+    function stopPolling() {
+      state.polling = false;
+      document.getElementById("pollStatus").textContent = "Polling: off";
+      if (state.pollTimer) {
+        clearInterval(state.pollTimer);
+        state.pollTimer = null;
+      }
+    }
+
+    function beginSelectionDrag(event) {
+      if (state.commandMode !== "select") {
+        return;
+      }
+      const board = document.getElementById("worldBoard");
+      const rect = board.getBoundingClientRect();
+      const startX = event.clientX - rect.left;
+      const startY = event.clientY - rect.top;
+      state.dragState = { startX, startY, currentX: startX, currentY: startY, additive: event.ctrlKey || event.metaKey };
+      board.classList.add("dragging");
+      updateSelectionBox();
+    }
+
+    function updateSelectionBox() {
+      const box = document.getElementById("selectionBox");
+      if (!state.dragState) {
+        box.style.display = "none";
+        return;
+      }
+      const { startX, startY, currentX, currentY } = state.dragState;
+      const left = Math.min(startX, currentX);
+      const top = Math.min(startY, currentY);
+      const width = Math.abs(currentX - startX);
+      const height = Math.abs(currentY - startY);
+      box.style.display = "block";
+      box.style.left = `${left}px`;
+      box.style.top = `${top}px`;
+      box.style.width = `${width}px`;
+      box.style.height = `${height}px`;
+    }
+
+    function finishSelectionDrag() {
+      const board = document.getElementById("worldBoard");
+      board.classList.remove("dragging");
+      const drag = state.dragState;
+      state.dragState = null;
+      updateSelectionBox();
+      if (!drag || !state.snapshot) {
+        return;
+      }
+
+      const left = Math.min(drag.startX, drag.currentX);
+      const right = Math.max(drag.startX, drag.currentX);
+      const top = Math.min(drag.startY, drag.currentY);
+      const bottom = Math.max(drag.startY, drag.currentY);
+
+      if ((right - left) < 4 && (bottom - top) < 4) {
+        return;
+      }
+
+      if (!drag.additive) {
+        state.selectedUnitIds.clear();
+      }
+
+      (state.snapshot.units || []).forEach(unit => {
+        const pos = worldToBoard(unit.position);
+        if (pos.x >= left && pos.x <= right && pos.y >= top && pos.y <= bottom) {
+          state.selectedUnitIds.add(unit.unitId);
+        }
+      });
+
+      renderSnapshot(state.snapshot);
+    }
+
+    function handleBoardGroundAction(event) {
+      if (!state.snapshot || !state.worldBounds) {
+        return;
+      }
+      const board = document.getElementById("worldBoard");
+      const rect = board.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const worldPoint = boardToWorld(x, y);
+      updateCommandInputsFromWorldPoint(worldPoint);
+
+      if (state.commandMode === "move") {
+        queueImmediateCommand();
+      } else if (state.commandMode === "start_flatten") {
+        document.getElementById("radiusValue").value = document.getElementById("buildRadius").value || "8";
+        document.getElementById("targetGrade").value = document.getElementById("flattenGrade").value || "0.12";
+        queueImmediateCommand();
+      } else if (state.commandMode === "start_construction") {
+        document.getElementById("radiusValue").value = document.getElementById("buildRadius").value || "8";
+        document.getElementById("targetKind").value = document.getElementById("buildStructureType").value || "StorageDepot";
+        queueImmediateCommand();
+      }
+    }
+
+    document.getElementById("renderButton").addEventListener("click", () => {
+      const raw = document.getElementById("jsonInput").value.trim();
+      if (!raw) {
+        alert("Paste a world_snapshot.json payload first.");
+        return;
+      }
+      try {
+        renderSnapshot(JSON.parse(raw));
+        setBanner("Manual snapshot rendered.", "pass");
+      } catch (error) {
+        alert(`Invalid JSON: ${error.message}`);
+        setBanner(`Invalid JSON: ${error.message}`, "fail");
+      }
+    });
+
+    document.getElementById("loadReportButton").addEventListener("click", () => {
+      const raw = document.getElementById("jsonInput").value.trim();
+      if (!raw) {
+        alert("Paste a regression_report.json payload first.");
+        return;
+      }
+      try {
+        renderReport(JSON.parse(raw));
+      } catch (error) {
+        alert(`Invalid JSON: ${error.message}`);
+        setBanner(`Invalid JSON: ${error.message}`, "fail");
+      }
+    });
+
+    [
+      "commandType",
+      "controllerPlayerId",
+      "targetX",
+      "targetZ",
+      "targetEntityId",
+      "targetKind",
+      "radiusValue",
+      "targetGrade",
+      "buildStructureType",
+      "buildRadius",
+      "flattenGrade"
+    ].forEach(id => {
+      document.getElementById(id).addEventListener("input", refreshCommandPreview);
+      document.getElementById(id).addEventListener("change", refreshCommandPreview);
+    });
+
+    document.getElementById("queueCommandButton").addEventListener("click", async () => {
+      const payload = refreshCommandPreview();
+      await writeCommandFile(payload);
+    });
+
+    document.getElementById("copyCommandButton").addEventListener("click", async () => {
+      const payload = refreshCommandPreview();
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      document.getElementById("commandWriteStatus").textContent = "Command JSON copied to clipboard.";
+    });
+
+    document.getElementById("clearSelectionButton").addEventListener("click", () => {
+      state.selectedUnitIds.clear();
+      renderSelectionSummary();
+      renderSelectedUnitsPanel();
+      if (state.snapshot) {
+        renderBoard(state.snapshot);
+      }
+    });
+
+    document.getElementById("pickFolderButton").addEventListener("click", async () => {
+      if (!window.showDirectoryPicker) {
+        setBanner("This browser does not support folder access. Use local fetch or manual paste mode.", "fail");
+        return;
+      }
+      try {
+        state.folderHandle = await window.showDirectoryPicker();
+        await refreshFromFolder();
+        startPolling();
+      } catch (error) {
+        setBanner(`Folder access canceled or failed: ${error.message}`, "fail");
+      }
+    });
+
+    document.getElementById("pollButton").addEventListener("click", () => {
+      if (state.polling) {
+        stopPolling();
+      } else {
+        startPolling();
+      }
+    });
+
+    document.getElementById("refreshButton").addEventListener("click", async () => {
+      await refreshFromFolder();
+    });
+
+    document.getElementById("modeSelect").addEventListener("click", () => setCommandMode("select"));
+    document.getElementById("modeMove").addEventListener("click", () => setCommandMode("move"));
+    document.getElementById("modeAttack").addEventListener("click", () => setCommandMode("attack"));
+    document.getElementById("modeHarvest").addEventListener("click", () => setCommandMode("harvest"));
+    document.getElementById("modeReturn").addEventListener("click", () => {
+      setCommandMode("return_to_storage");
+      queueImmediateCommand();
+    });
+    document.getElementById("modeFlatten").addEventListener("click", () => setCommandMode("start_flatten"));
+    document.getElementById("modeBuild").addEventListener("click", () => setCommandMode("start_construction"));
+
+    const worldBoard = document.getElementById("worldBoard");
+    worldBoard.addEventListener("mousedown", event => {
+      if (event.button !== 0) {
+        return;
+      }
+      if (event.target !== worldBoard) {
+        return;
+      }
+      if (state.commandMode === "select") {
+        beginSelectionDrag(event);
+      }
+    });
+
+    worldBoard.addEventListener("mousemove", event => {
+      if (!state.dragState) {
+        return;
+      }
+      const rect = worldBoard.getBoundingClientRect();
+      state.dragState.currentX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+      state.dragState.currentY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+      updateSelectionBox();
+    });
+
+    window.addEventListener("mouseup", event => {
+      if (!state.dragState) {
+        return;
+      }
+      finishSelectionDrag(event);
+    });
+
+    worldBoard.addEventListener("click", event => {
+      if (event.target !== worldBoard) {
+        return;
+      }
+      if (state.commandMode !== "select") {
+        handleBoardGroundAction(event);
+      }
+    });
+
+    async function tryFetchJson(path) {
+      const response = await fetch(path);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} for ${path}`);
+      }
+      return response.json();
+    }
+
+    async function bootstrapFromQuery() {
+      const params = new URLSearchParams(window.location.search);
+      const snapshotPath = params.get("snapshot");
+      const reportPath = params.get("report");
+      if (!snapshotPath) {
+        setBanner("No snapshot query parameter found. Manual paste mode is ready.");
+        renderSelectionSummary();
+        renderSelectedUnitsPanel();
+        renderSessionStatus(null);
+        refreshCommandPreview();
+        return;
+      }
+
+      try {
+        const snapshot = await tryFetchJson(snapshotPath);
+        renderSnapshot(snapshot);
+        if (reportPath) {
+          try {
+            const report = await tryFetchJson(reportPath);
+            renderReport(report);
+          } catch (reportError) {
+            setBanner(`Snapshot loaded, report unavailable: ${reportError.message}`, "fail");
+          }
+        } else {
+          setBanner("Snapshot loaded from local fetch.", "pass");
+        }
+      } catch (error) {
+        setBanner(`Auto-load failed (${error.message}). Browser file policy may block fetch. Use folder access or paste JSON manually.`, "fail");
+      }
+
+      renderSessionStatus(null);
+      refreshCommandPreview();
+    }
+
+    renderSelectionSummary();
+    renderSelectedUnitsPanel();
+    setCommandMode("select");
+    bootstrapFromQuery();
+  </script>
+</body>
+</html>

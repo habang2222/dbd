@@ -30,12 +30,21 @@ struct WorldState {
     std::unordered_map<dbd::Id, dbd::InsurancePolicyState> insurance_policies;
     std::unordered_map<dbd::Id, dbd::RegionRiskProfileState> region_profiles;
     std::unordered_map<std::int64_t, dbd::ChunkState> chunks;
+    std::unordered_map<dbd::Id, std::unordered_map<dbd::Id, dbd::KnownContactState>> known_contacts;
+    std::unordered_map<std::int64_t, std::vector<dbd::Id>> unit_spatial_chunks;
+    bool unit_spatial_index_dirty {true};
 };
 
 dbd::Id AllocateId(WorldState& world);
 std::int64_t ChunkKey(dbd::ChunkCoord coord);
 dbd::ChunkCoord WorldToChunk(const dbd::Vec3& position);
 dbd::ChunkState& GetOrCreateChunk(WorldState& world, dbd::ChunkCoord coord);
+float WorldChunkSize();
+void InitializeExperimentalChunkGrid(WorldState& world);
+void RefreshChunkStreaming(WorldState& world);
+void MarkUnitSpatialIndexDirty(WorldState& world);
+void RefreshUnitSpatialIndex(WorldState& world);
+std::vector<dbd::Id> FindNearbyUnitIds(WorldState& world, const dbd::Vec3& center, float radius);
 
 dbd::PlayerState& CreatePlayer(WorldState& world, const std::string& display_name);
 dbd::LineageState& CreateLineage(WorldState& world, dbd::Id controlling_player_id, const std::string& display_name);
@@ -121,5 +130,7 @@ void AdvanceWorldTime(WorldState& world, std::uint64_t delta_ms);
 void PerformDailyChunkMaintenance(WorldState& world);
 bool SaveWorldState(const WorldState& world, const std::filesystem::path& root_dir);
 bool LoadWorldState(WorldState& world, const std::filesystem::path& root_dir);
+bool ExportWorldSnapshotJson(const WorldState& world, const std::filesystem::path& output_path);
+const std::string& GetLastWorldStateDiagnostic();
 
 }  // namespace dbd_server

@@ -109,6 +109,28 @@ enum class CargoCategory : std::uint8_t {
     Equipment
 };
 
+enum class ItemCategory : std::uint8_t {
+    Resource,
+    ConstructionMaterial,
+    Tool,
+    Equipment
+};
+
+enum class HaulRouteSourceKind : std::uint8_t {
+    None,
+    ResourceNode,
+    DroppedCargo
+};
+
+enum class HaulRoutePhase : std::uint8_t {
+    None,
+    ToSource,
+    Loading,
+    ToStorage,
+    Unloading,
+    Interrupted
+};
+
 enum class ConstructionStage : std::uint8_t {
     Planned,
     WaitingForFlatten,
@@ -131,6 +153,16 @@ struct Vec3 {
     float z {};
 };
 
+struct KnownContactState {
+    Id observing_player_id {};
+    Id target_entity_id {};
+    AttackTargetKind target_kind {AttackTargetKind::Unit};
+    Vec3 position {};
+    std::uint64_t last_seen_tick {};
+    Id spotted_by_unit_id {};
+    bool currently_visible {};
+};
+
 struct ChunkCoord {
     std::int32_t x {};
     std::int32_t z {};
@@ -143,6 +175,42 @@ struct CargoStack {
     float unit_weight {1.0f};
     CargoCategory category {CargoCategory::Resource};
 };
+
+struct ItemDefinition {
+    Id item_id {};
+    const char* display_name {};
+    ItemCategory category {ItemCategory::Resource};
+    float unit_weight {1.0f};
+    float base_value {};
+    bool stackable {true};
+    std::uint32_t max_stack {999};
+};
+
+inline const std::vector<ItemDefinition>& GetDefaultItemDefinitions() {
+    static const std::vector<ItemDefinition> definitions {
+        {91'001, "Basic Wood", ItemCategory::ConstructionMaterial, 1.0f, 6.0f, true, 999},
+        {91'002, "Stone Block", ItemCategory::ConstructionMaterial, 2.4f, 10.0f, true, 500},
+        {91'003, "Iron Fitting", ItemCategory::ConstructionMaterial, 1.2f, 18.0f, true, 300},
+        {91'004, "Repair Material", ItemCategory::ConstructionMaterial, 1.0f, 10.0f, true, 500},
+        {92'001, "Field Shovel", ItemCategory::Tool, 5.0f, 65.0f, false, 1},
+        {92'002, "Flattening Tool", ItemCategory::Tool, 8.0f, 120.0f, false, 1},
+        {92'003, "Builder Kit", ItemCategory::Tool, 7.0f, 140.0f, false, 1},
+        {92'004, "Survey Marker", ItemCategory::Tool, 0.3f, 12.0f, true, 50},
+        {92'005, "Storage Crate", ItemCategory::Tool, 4.0f, 45.0f, true, 20},
+        {92'006, "Field Hammer", ItemCategory::Tool, 3.0f, 55.0f, false, 1}
+    };
+    return definitions;
+}
+
+inline const ItemDefinition* FindItemDefinition(Id item_id) {
+    const auto& definitions = GetDefaultItemDefinitions();
+    for (const auto& definition : definitions) {
+        if (definition.item_id == item_id) {
+            return &definition;
+        }
+    }
+    return nullptr;
+}
 
 struct AutomationRule {
     AutomationTrigger trigger {AutomationTrigger::LowHealth};
@@ -206,7 +274,22 @@ struct WorkAssignmentState {
     Id target_entity_id {};
     AttackTargetKind target_kind {AttackTargetKind::Unit};
     Vec3 target_position {};
+    Vec3 secondary_position {};
+    float radius {};
+    bool patrol_route {};
+    bool patrol_to_secondary {};
     bool delegated {false};
+    bool route_active {};
+    HaulRouteSourceKind route_source_kind {HaulRouteSourceKind::None};
+    HaulRoutePhase route_phase {HaulRoutePhase::None};
+    Id route_source_id {};
+    Id route_storage_id {};
+};
+
+struct QueuedOrderState {
+    UnitOrderType order_type {UnitOrderType::Idle};
+    WorkAssignmentState assignment {};
+    Vec3 move_target {};
 };
 
 struct UnitState {
@@ -236,6 +319,11 @@ struct UnitState {
     bool permanently_dead {false};
     std::vector<CargoStack> cargo {};
     std::vector<AutomationRule> automation_rules {};
+    std::vector<QueuedOrderState> queued_orders {};
+    std::string tactical_state {};
+    std::string queue_interrupt_reason {};
+    std::string route_threat_level {"safe"};
+    Id route_threat_enemy_id {};
 };
 
 struct SquadState {
@@ -385,10 +473,14 @@ struct PlayerState {
     float credits {};
     float tax_load {};
     float upkeep_load {};
+    float credit_load {};
     float complexity_load {};
     float food_load {};
     float food_shortage_ratio {};
     float upkeep_shortage_ratio {};
+    float shortage_ratio {};
+    float efficiency {};
+    float pressure_ratio {};
 };
 
 }  // namespace dbd

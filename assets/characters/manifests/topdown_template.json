@@ -1,0 +1,52 @@
+{
+  "name": "starter_topdown",
+  "canvas": {
+    "width": 256,
+    "height": 256
+  },
+  "output": "assets/characters/composites/topdown/starter_topdown.png",
+  "layers": [
+    {
+      "slot": "body_base",
+      "path": "assets/characters/topdown/body_base_topdown.png",
+      "x": 0,
+      "y": 0,
+      "visible": true
+    },
+    {
+      "slot": "pants",
+      "path": "",
+      "x": 0,
+      "y": 0,
+      "visible": false
+    },
+    {
+      "slot": "shirt",
+      "path": "",
+      "x": 0,
+      "y": 0,
+      "visible": false
+    },
+    {
+      "slot": "outerwear",
+      "path": "",
+      "x": 0,
+      "y": 0,
+      "visible": false
+    },
+    {
+      "slot": "headgear",
+      "path": "",
+      "x": 0,
+      "y": 0,
+      "visible": false
+    },
+    {
+      "slot": "held_item",
+      "path": "",
+      "x": 0,
+      "y": 0,
+      "visible": false
+    }
+  ]
+}
